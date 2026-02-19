@@ -1,0 +1,42 @@
+# Session & trading window (Chicago Time)
+session:
+  session_start: "17:30"
+  session_end: "15:30"
+  buffer_minutes: 30
+  trading_start: "04:00"
+  trading_end: "14:00"
+
+# Timeframe
+timeframe: "5min"
+
+# Default hedge ratio parameters
+hedge:
+  ols_window: 120
+  ols_min_periods: 60
+  kalman_delta: 1.0e-4
+  kalman_ve: 1.0e-1
+  vol_window: 60
+
+# Default metrics parameters
+metrics:
+  zscore_window: 120
+  adf_window: 480
+  hurst_window: 480
+  halflife_window: 240
+  correlation_window: 120
+
+# Default signal parameters
+signals:
+  z_entry: 2.0
+  z_exit: 0.5
+  z_stop: 4.0
+  max_adf_pvalue: 0.05
+  max_hurst: 0.45
+  min_half_life: 5
+  max_half_life: 120
+
+# Backtest parameters
+backtest:
+  initial_capital: 100000.0
+  commission_per_contract: 2.50
+  slippage_ticks: 1

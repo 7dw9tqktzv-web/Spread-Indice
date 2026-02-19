@@ -1,0 +1,24 @@
+pairs:
+  NQ_ES:
+    leg_a: NQ
+    leg_b: ES
+
+  NQ_RTY:
+    leg_a: NQ
+    leg_b: RTY
+
+  NQ_YM:
+    leg_a: NQ
+    leg_b: YM
+
+  ES_RTY:
+    leg_a: ES
+    leg_b: RTY
+
+  ES_YM:
+    leg_a: ES
+    leg_b: YM
+
+  RTY_YM:
+    leg_a: RTY
+    leg_b: YM

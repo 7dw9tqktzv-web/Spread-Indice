@@ -1,0 +1,32 @@
+# Optimisation search spaces
+search_space:
+  zscore_window: [60, 240]
+  z_entry: [1.5, 3.0]
+  z_exit: [0.0, 1.0]
+  z_stop: [3.0, 5.0]
+  ols_window: [60, 480]
+  kalman_delta: [1.0e-5, 1.0e-2]
+  kalman_ve: [1.0e-2, 1.0]
+  vol_window: [30, 120]
+  max_hurst: [0.35, 0.50]
+  max_adf_pvalue: [0.01, 0.10]
+  min_half_life: [3, 10]
+  max_half_life: [60, 240]
+
+# Walk-forward configuration
+walk_forward:
+  train_days: 252
+  test_days: 63
+  step_days: 63
+  anchored: false
+
+# Optuna settings
+optuna:
+  n_trials: 200
+  timeout_seconds: 3600
+  objective: "sharpe"
+  sampler: "TPE"
+
+# Grid search settings
+grid:
+  n_points_per_param: 5

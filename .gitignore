@@ -15,3 +15,4 @@ build/
 *.so
 *.obj
 .claude/
+.mcp.json

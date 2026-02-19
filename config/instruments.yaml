@@ -1,0 +1,31 @@
+NQ:
+  exchange: CME
+  multiplier: 20.0
+  tick_size: 0.25
+  tick_value: 5.0
+  commission: 2.50
+  margin: 18000.0
+
+ES:
+  exchange: CME
+  multiplier: 50.0
+  tick_size: 0.25
+  tick_value: 12.50
+  commission: 2.50
+  margin: 13000.0
+
+RTY:
+  exchange: CME
+  multiplier: 50.0
+  tick_size: 0.10
+  tick_value: 5.0
+  commission: 2.50
+  margin: 7500.0
+
+YM:
+  exchange: CME
+  multiplier: 5.0
+  tick_size: 1.0
+  tick_value: 5.0
+  commission: 2.50
+  margin: 9500.0
