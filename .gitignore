@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+output/cache/
+output/results/
+output/reports/
+output/params/
+*.egg-info/
+dist/
+build/
+.env
+*.dll
+*.so
+*.obj
+.claude/
