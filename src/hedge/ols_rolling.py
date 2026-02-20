@@ -19,10 +19,10 @@ class OLSRollingConfig:
 class OLSRollingEstimator(HedgeRatioEstimator):
     """Rolling OLS regression on log-prices for dynamic hedge ratio.
 
-    log_a = ln(close_a), log_b = ln(close_b)
-    β = Cov(log_a, log_b) / Var(log_a)
-    α = mean(log_b) - β × mean(log_a)
-    Spread = log_b - β × log_a - α  (OLS residual)
+    Convention: log_a = α + β × log_b + ε  (leg_a dependent, leg_b explanatory)
+    β = Cov(log_a, log_b) / Var(log_b)
+    α = mean(log_a) - β × mean(log_b)
+    Spread = log_a - β × log_b - α  (OLS residual)
     Z-score = (Spread - μ) / σ
     """
 
@@ -38,18 +38,19 @@ class OLSRollingEstimator(HedgeRatioEstimator):
         log_a = np.log(aligned.df["close_a"])
         log_b = np.log(aligned.df["close_b"])
 
-        # Rolling OLS: β = Cov(log_a, log_b) / Var(log_a)
+        # Rolling OLS: log_a = α + β × log_b + ε
+        # β = Cov(log_a, log_b) / Var(log_b)
         cov = log_a.rolling(self.window).cov(log_b)
-        var = log_a.rolling(self.window).var()
+        var = log_b.rolling(self.window).var()
         beta = (cov / var).replace([np.inf, -np.inf], np.nan)
 
         # Alpha (intercept)
         mean_a = log_a.rolling(self.window).mean()
         mean_b = log_b.rolling(self.window).mean()
-        alpha = mean_b - beta * mean_a
+        alpha = mean_a - beta * mean_b
 
         # Spread = OLS residual on log-prices
-        spread = log_b - beta * log_a - alpha
+        spread = log_a - beta * log_b - alpha
 
         # Z-score (rolling mean/std on spread)
         mu = spread.rolling(self.zscore_window).mean()

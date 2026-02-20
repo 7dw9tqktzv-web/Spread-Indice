@@ -31,13 +31,12 @@ class TestOLSRollingEstimator:
 
     def test_beta_convergence(self, estimator, aligned):
         result = estimator.estimate(aligned)
-        # OLS: β = Cov(log_a, log_b) / Var(log_a)
-        # With log_a = 1.5 * log_b, β = 1/1.5 ≈ 0.667
-        expected_beta = 1.0 / 1.5
+        # OLS: log_a = α + β × log_b + ε → β = Cov(log_a, log_b) / Var(log_b)
+        # With log_a = 1.5 * log_b, β ≈ 1.5
         beta_tail = result.beta.iloc[WINDOW + 100:].dropna()
         assert len(beta_tail) > 0
         mean_beta = beta_tail.mean()
-        assert abs(mean_beta - expected_beta) < 0.1, f"Expected β≈{expected_beta:.3f}, got {mean_beta:.4f}"
+        assert abs(mean_beta - 1.5) < 0.1, f"Expected β≈1.5, got {mean_beta:.4f}"
 
     def test_nan_warmup(self, estimator, aligned):
         result = estimator.estimate(aligned)

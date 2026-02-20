@@ -10,9 +10,13 @@ from src.data.alignment import AlignedPair
 
 @dataclass
 class HedgeResult:
-    """Output of a hedge ratio estimation."""
+    """Output of a hedge ratio estimation.
+
+    Convention: log_a = α + β × log_b + ε  (leg_a dependent, leg_b explanatory)
+    Spread S(t) = log_a(t) - β(t) × log_b(t)  (OLS residual on log-prices)
+    """
     beta: pd.Series          # dynamic hedge ratio β(t)
-    spread: pd.Series        # S(t) = close_a - β(t) * close_b
+    spread: pd.Series        # S(t) = log_a - β(t) × log_b
     zscore: pd.Series        # z-score of the spread
     method: str              # hedge method name
     params: dict = field(default_factory=dict)  # parameters used
