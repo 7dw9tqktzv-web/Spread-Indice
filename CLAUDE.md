@@ -1,40 +1,98 @@
-# Spread Trading Indicator — Project CLAUDE.md
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-Système complet de spread trading intraday sur futures d'indices US (NQ, ES, RTY, YM).
+Système de spread trading intraday sur futures US (NQ, ES, RTY, YM).
 - **Phase 1** : Moteur de backtest Python (optimisation & validation)
 - **Phase 2** : Indicateur Sierra Charts temps réel (ACSIL C++)
 
-Le biais directionnel journalier est discrétionnaire — le système time l'entrée avec précision statistique sur des billets macroéconomiques.
+Le biais directionnel journalier est discrétionnaire — le système time l'entrée avec précision statistique sur des billets macroéconomiques. Voir `ARCHITECTURE.md` pour le design détaillé.
 
-## Univers de Trading
-- **Instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
+## Commands
+
+```bash
+# Activate venv (ALWAYS work in venv)
+source venv/Scripts/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all tests
+python -m pytest tests/ -v --tb=short
+
+# Run unit tests only (skip integration)
+python -m pytest tests/ -v --ignore=tests/test_integration
+
+# Run a single test file
+python -m pytest tests/test_hedge/test_ols_rolling.py -v
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+
+# Run backtest pipeline
+python scripts/run_backtest.py --pair NQ_ES --method ols_rolling
+python scripts/run_backtest.py --prepare-data  # data prep only
+
+# Run optimisation
+python scripts/run_optimisation.py --pair NQ_ES --method ols_rolling --engine optuna
+
+# Run all pairs in parallel
+python scripts/run_all_pairs.py --workers 8
+```
+
+**Important**: All scripts must be run from the project root (cache uses relative path `output/cache`).
+
+## Architecture
+
+### Implementation Status
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/utils/`, `config/`
+- **Stubs only**: `src/metrics/`, `src/signals/`, `src/backtest/`, `src/optimisation/`, `scripts/`, `sierra/`, `tests/` (all `__init__.py` only)
+
+### Data Flow
+`raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
+
+Dependencies flow strictly downward. Config YAML files are loaded at script level and injected as dataclasses — modules never read config directly.
+
+### Key Modules
+- **`src/data/`** — Pipeline: `loader.py` → `cleaner.py` → `resampler.py` → `alignment.py`. Cache via `cache.py` (Parquet)
+- **`src/hedge/`** — Hedge ratio estimators behind `HedgeRatioEstimator` ABC (`base.py`). Implemented: `ols_rolling.py`, `kalman.py`
+- **`src/sizing/`** — Dollar-neutral × β position sizing (scalar + vectorized): `N_b = round((Notionnel_A / Notionnel_B) × β × N_a)`
+- **`src/stats/`** — Statistical functions: hurst (R/S), halflife (AR(1)), correlation, stationarity (2 ADF variants — one statsmodels, one custom for C++ parity)
+- **`src/spread/`** — `SpreadPair` dataclass (`pair.py`)
+- **`config/`** — YAML configs: `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
+- **`sierra/`** — Phase 2 ACSIL C++ indicator (header-only libs, online algorithms)
+
+### Non-Obvious Architectural Details
+
+1. **ABC signature**: `HedgeRatioEstimator.estimate(aligned: AlignedPair) -> HedgeResult` — estimators receive the full `AlignedPair` object, not raw series. Log-price conversion happens inside each estimator.
+
+2. **`HedgeResult` bundles spread AND zscore**: The estimator computes both. The z-score method differs by estimator — OLS uses `zscore_window=12` rolling, Kalman uses innovation-based `ν(t)/√F(t)` (no separate window).
+
+3. **Session filter wraps midnight via OR logic**: `t >= buf_start OR t < buf_end` (session is 17:30→15:30 CT overnight). A naive range check would be wrong.
+
+4. **Column naming convention**: `BarData.df` uses `close`, but after `align_pair()` the `AlignedPair.df` uses `close_a` / `close_b`.
+
+5. **Imports**: `pyproject.toml` sets `pythonpath = ["."]` — all imports use `from src.xxx import yyy`.
+
+6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update.
+
+7. **Two ADF implementations in `stationarity.py`**: `adf_rolling()` (statsmodels) and `adf_statistic_simple()` (custom, no augmentation) — the simple one is designed for Python/C++ parity testing.
+
+### Instruments & Pairs
+- **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
 - **6 paires** : NQ/ES, NQ/RTY, NQ/YM, ES/RTY, ES/YM, RTY/YM
 
-## Données
-- Source : Sierra Charts / Denali Feed (tick data)
-- Historique : 5 ans
-- Granularité : 1min brut → 5min agrégé (backtest)
-- Session : 17h30–15h30 CT (Globex), exclusion 30min début/fin
-- Fenêtre trading : 4h00–14h00 CT
+## Key Conventions
+- Toujours travailler en **venv**
+- Données en **Chicago Time (CT)**
+- Tous les calculs sur **log-prix** (ln) pour OLS et Kalman
+- Session : 17h30–15h30 CT (Globex), fenêtre trading : 4h00–14h00 CT
+- **Git** : utiliser l'agent GitHub (`gh`) pour tous les commits, push et opérations de branche — jamais de commandes git manuelles
+- Valider chaque étape avec l'utilisateur avant de passer à la suivante
+- Paramètres optimisés en Phase 1 avant implémentation Phase 2
 
-## Hedge Ratio Methods
-1. **OLS Rolling** (bêta dynamique sur log-prix, fenêtre 7200 bars = 30j)
-2. **Filtre de Kalman** (bêta adaptatif sur log-prix, Q = α×R×I, z-score innovation)
-
-## Sizing
-- **Dollar Neutral × β** : N_b = round((Notionnel_A / Notionnel_B) × β × N_a)
-- Leg A fixe = 1 contrat, leg B calculée dynamiquement
-- Formule ACSIL v1.4 compatible
-
-## Métriques Statistiques (informatives, affichées dans textbox)
-- Z-score OLS (rolling 12 bars = 1h) ou Kalman (innovation ν/√F, auto-adaptatif)
-- ADF Test : simplifié Sierra (rolling 24 bars) + statsmodels complet
-- Hurst Exponent (R/S, rolling 64 bars)
-- Half-Life AR(1) (rolling 24 bars)
-- Corrélation glissante (Pearson sur log-prix, 12 bars, seuil configurable)
-
-## Paramètres Validés (5min)
+## Validated Parameters (5min)
 | Paramètre | Valeur |
 |-----------|--------|
 | OLS lookback | 7200 bars (30j) |
@@ -46,34 +104,6 @@ Le biais directionnel journalier est discrétionnaire — le système time l'ent
 | Kalman alpha_ratio | 1e-5 (à optimiser: [1e-6, 1e-5, 1e-4]) |
 | Kalman warmup | 100 bars |
 
-## Phase 1 — Python Pipeline
-1. Ingestion données CSV (Sierra Charts export)
-2. Nettoyage : filtrage horaire, sessions, gaps
-3. Construction spread (6 paires) sur log-prix
-4. Calcul hedge ratio (OLS Rolling + Kalman)
-5. Sizing dollar-neutral × β
-6. Calcul métriques statistiques (ADF, Hurst, half-life, corrélation)
-7. Génération signaux (z-score entry/exit/stop)
-8. Backtest avec coûts de transaction
-9. Performance : Sharpe, Calmar, Hit Ratio, Profit Factor
-10. Optimisation paramètres (walk-forward, grid search)
-11. Rapport comparatif
-
-## Phase 2 — Sierra Charts (ACSIL C++)
-1. Réplication modèles validés
-2. Calcul temps réel : OLS Rolling + Kalman + Z-score
-3. Sizing en contrats (dollar-neutral × β)
-4. Dashboard textbox visuel
-5. Inputs paramétrables dynamiquement
-
 ## Tech Stack
-- **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy
-- **Phase 2** : C++ (ACSIL Sierra Charts API)
-
-## Conventions
-- Toujours travailler en venv
-- Données en Chicago Time (CT)
-- Tous les calculs sur **log-prix** (ln) pour OLS et Kalman
-- Paramètres optimisés en Phase 1 avant implémentation Phase 2
-- **Git** : utiliser l'agent GitHub (gh) pour tous les commits, push et opérations de branche — jamais de commandes git manuelles
-- Valider chaque étape avec l'utilisateur avant de passer à la suivante
+- **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy, filterpy, optuna
+- **Phase 2** : C++ (ACSIL Sierra Charts API), header-only, online algorithms, no STL in hot path
