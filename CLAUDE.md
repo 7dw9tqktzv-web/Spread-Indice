@@ -46,8 +46,8 @@ python scripts/run_all_pairs.py --workers 8
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/` (dashboard), `src/signals/` (generator + filters), `src/utils/`, `config/`, `tests/` (26 tests)
-- **Stubs only**: `src/backtest/`, `src/optimisation/`, `scripts/`, `sierra/`
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/` (dashboard), `src/signals/` (generator + filters + trading window), `src/backtest/` (engine + performance), `src/utils/`, `config/`, `tests/` (37 tests)
+- **Stubs only**: `src/optimisation/`, `scripts/`, `sierra/` (reference docs ready)
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
@@ -60,10 +60,11 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 - **`src/sizing/`** — Dollar-neutral × β position sizing (scalar + vectorized): `N_b = round((Notionnel_A / Notionnel_B) × β × N_a)`
 - **`src/stats/`** — Low-level statistical functions: hurst (R/S), halflife (AR(1)), correlation, stationarity (2 ADF variants)
 - **`src/metrics/`** — Aggregation layer (`dashboard.py`): `MetricsConfig` + `compute_all_metrics()` calls `src/stats/` functions, returns DataFrame with `adf_stat, hurst, half_life, correlation`
-- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: regime filters (ADF/Hurst/correlation/half-life) block entries, never exits
+- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: regime filters (ADF/Hurst/correlation/half-life) block entries, never exits + trading window filter [04:00-14:00) CT zeros signals outside window (forced flat at end)
+- **`src/backtest/`** — `engine.py`: event-driven BacktestEngine with mark-to-market equity, directional slippage per leg, dollar-neutral sizing, commission costs. `performance.py`: PerformanceMetrics (Sharpe, drawdown, Calmar, profit factor)
 - **`src/spread/`** — `SpreadPair` dataclass (`pair.py`)
 - **`config/`** — YAML configs: `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
-- **`sierra/`** — Phase 2 ACSIL C++ indicator (header-only libs, online algorithms)
+- **`sierra/`** — Phase 2 ACSIL C++ indicator (header-only libs, online algorithms). Reference docs: `infos_sierra.md` (config), `specs_actifs.md` (contract specs), `SC_*_REFERENCE.md` (ACSIL docs), example `.cpp` templates
 
 ### Non-Obvious Architectural Details
 
@@ -86,6 +87,10 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 9. **Signal generator has 4 states, not 3**: FLAT → LONG/SHORT → COOLDOWN → FLAT. After a stop loss, the COOLDOWN state blocks re-entry until `|z| < z_exit` (spread must return to neutral). NaN resets to FLAT (clean session start).
 
 10. **`src/stats/` vs `src/metrics/`**: `stats/` contains pure computation functions (rolling hurst, halflife, etc.). `metrics/dashboard.py` is the aggregation layer that calls `stats/` and returns a unified DataFrame. They are separate layers, not duplicates.
+
+11. **Calculate vs Act separation**: Hedge ratio + metrics compute on full Globex session (18:00-15:00 CT) for stable estimation. Signals + trades restricted to [04:00-14:00) CT via `apply_trading_window_filter()`. Position open at 13:55 is force-closed at 14:00 (signal → 0).
+
+12. **ADF in dashboard uses `adf_statistic_simple()`** (statistics ~-3.5, threshold -2.86), NOT `adf_rolling()` (p-values 0-1). The simple variant is Sierra C++ compatible.
 
 ### Instruments & Pairs
 - **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
