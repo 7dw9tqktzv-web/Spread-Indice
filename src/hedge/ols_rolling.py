@@ -1,4 +1,4 @@
-"""OLS Rolling hedge ratio estimator."""
+"""OLS Rolling hedge ratio estimator on log-prices."""
 
 import numpy as np
 import pandas as pd
@@ -8,26 +8,35 @@ from src.hedge.base import HedgeRatioEstimator, HedgeResult
 
 
 class OLSRollingEstimator(HedgeRatioEstimator):
-    """Rolling OLS regression for dynamic hedge ratio.
+    """Rolling OLS regression on log-prices for dynamic hedge ratio.
 
-    β(t) = Cov(Y, X)[t-w:t] / Var(X)[t-w:t]
+    log_a = ln(close_a), log_b = ln(close_b)
+    β = Cov(log_a, log_b) / Var(log_a)
+    α = mean(log_b) - β × mean(log_a)
+    Spread = log_b - β × log_a - α  (OLS residual)
+    Z-score = (Spread - μ) / σ
     """
 
-    def __init__(self, window: int = 120, zscore_window: int = 60):
+    def __init__(self, window: int = 7200, zscore_window: int = 12):
         self.window = window
         self.zscore_window = zscore_window
 
     def estimate(self, aligned: AlignedPair) -> HedgeResult:
-        y = aligned.df["close_a"]
-        x = aligned.df["close_b"]
+        log_a = np.log(aligned.df["close_a"])
+        log_b = np.log(aligned.df["close_b"])
 
-        # Rolling beta
-        cov = y.rolling(self.window).cov(x)
-        var = x.rolling(self.window).var()
+        # Rolling OLS: β = Cov(log_a, log_b) / Var(log_a)
+        cov = log_a.rolling(self.window).cov(log_b)
+        var = log_a.rolling(self.window).var()
         beta = (cov / var).replace([np.inf, -np.inf], np.nan)
 
-        # Spread
-        spread = y - beta * x
+        # Alpha (intercept)
+        mean_a = log_a.rolling(self.window).mean()
+        mean_b = log_b.rolling(self.window).mean()
+        alpha = mean_b - beta * mean_a
+
+        # Spread = OLS residual on log-prices
+        spread = log_b - beta * log_a - alpha
 
         # Z-score (rolling mean/std on spread)
         mu = spread.rolling(self.zscore_window).mean()

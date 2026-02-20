@@ -9,31 +9,24 @@ session:
 # Timeframe
 timeframe: "5min"
 
-# Default hedge ratio parameters
+# Hedge ratio parameters (OLS on log-prices)
 hedge:
-  ols_window: 120
-  ols_min_periods: 60
-  kalman_delta: 1.0e-4
-  kalman_ve: 1.0e-1
-  vol_window: 60
+  ols_window: 7200          # 30 jours (12 bars/h × 20h × 30j)
+  zscore_window: 12         # 1 heure
 
-# Default metrics parameters
+# Metrics parameters
 metrics:
-  zscore_window: 120
-  adf_window: 480
-  hurst_window: 480
-  halflife_window: 240
-  correlation_window: 120
+  correlation_window: 12    # 1 heure
+  correlation_min: 0.8      # seuil configurable
+  adf_window: 24            # 2 heures
+  hurst_window: 64          # ~5h20
+  halflife_window: 24       # 2 heures
 
 # Default signal parameters
 signals:
   z_entry: 2.0
   z_exit: 0.5
   z_stop: 4.0
-  max_adf_pvalue: 0.05
-  max_hurst: 0.45
-  min_half_life: 5
-  max_half_life: 120
 
 # Backtest parameters
 backtest:
