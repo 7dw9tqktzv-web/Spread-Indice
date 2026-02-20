@@ -9,10 +9,13 @@ session:
 # Timeframe
 timeframe: "5min"
 
-# Hedge ratio parameters (OLS on log-prices)
+# Hedge ratio parameters (on log-prices)
 hedge:
   ols_window: 7200          # 30 jours (12 bars/h × 20h × 30j)
-  zscore_window: 12         # 1 heure
+  zscore_window: 12         # 1 heure (OLS z-score)
+  kalman_alpha_ratio: 1.0e-5  # Q = alpha × R × I (à optimiser: [1e-6, 1e-5, 1e-4])
+  kalman_warmup: 100          # barres ignorées pendant convergence
+  kalman_gap_P_mult: 10.0     # facteur élargissement P aux gaps overnight
 
 # Metrics parameters
 metrics:
