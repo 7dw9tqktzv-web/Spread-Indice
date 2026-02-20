@@ -21,7 +21,7 @@ def clean(data: BarData, session: SessionConfig) -> BarData:
     # Reindex to full 1-minute frequency within existing range, then ffill with limit
     if len(df) > 1:
         full_idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq="1min")
-        # Only keep timestamps that fall within session
+        full_idx = full_idx[full_idx.dayofweek < 5]  # exclude Saturday (5) and Sunday (6)
         df = df.reindex(full_idx)
         df = df.ffill(limit=3)
         df = df.dropna(subset=["close"])

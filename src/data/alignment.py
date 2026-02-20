@@ -24,6 +24,10 @@ def align_pair(a: BarData, b: BarData, pair: SpreadPair) -> AlignedPair:
     merged = df_a.join(df_b, how="inner")
 
     # Verify no NaN in output
-    assert not merged.isna().any().any(), "NaN values found after alignment"
+    if merged.isna().any().any():
+        nan_counts = merged.isna().sum()
+        raise ValueError(
+            f"NaN values found after alignment: {nan_counts[nan_counts > 0].to_dict()}"
+        )
 
     return AlignedPair(pair=pair, df=merged, timeframe=a.timeframe)

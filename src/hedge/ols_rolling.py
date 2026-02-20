@@ -1,10 +1,19 @@
 """OLS Rolling hedge ratio estimator on log-prices."""
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from src.data.alignment import AlignedPair
 from src.hedge.base import HedgeRatioEstimator, HedgeResult
+
+
+@dataclass(frozen=True)
+class OLSRollingConfig:
+    """Configuration for OLS Rolling estimator."""
+    window: int = 7200
+    zscore_window: int = 12
 
 
 class OLSRollingEstimator(HedgeRatioEstimator):
@@ -17,9 +26,13 @@ class OLSRollingEstimator(HedgeRatioEstimator):
     Z-score = (Spread - μ) / σ
     """
 
-    def __init__(self, window: int = 7200, zscore_window: int = 12):
-        self.window = window
-        self.zscore_window = zscore_window
+    def __init__(self, config: OLSRollingConfig | None = None, **kwargs):
+        if config is not None:
+            self.config = config
+        else:
+            self.config = OLSRollingConfig(**kwargs)
+        self.window = self.config.window
+        self.zscore_window = self.config.zscore_window
 
     def estimate(self, aligned: AlignedPair) -> HedgeResult:
         log_a = np.log(aligned.df["close_a"])

@@ -14,11 +14,21 @@ Features:
     - Joseph form for numerical stability
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from src.data.alignment import AlignedPair
 from src.hedge.base import HedgeRatioEstimator, HedgeResult
+
+
+@dataclass(frozen=True)
+class KalmanConfig:
+    """Configuration for Kalman filter estimator."""
+    alpha_ratio: float = 1e-5
+    warmup: int = 100
+    gap_P_multiplier: float = 10.0
 
 
 def _detect_session_starts(index: pd.DatetimeIndex) -> np.ndarray:
@@ -45,10 +55,14 @@ class KalmanEstimator(HedgeRatioEstimator):
         Factor to enlarge P at session boundaries. Default 10.0.
     """
 
-    def __init__(self, alpha_ratio: float = 1e-5, warmup: int = 100, gap_P_multiplier: float = 10.0):
-        self.alpha_ratio = alpha_ratio
-        self.warmup = warmup
-        self.gap_P_multiplier = gap_P_multiplier
+    def __init__(self, config: KalmanConfig | None = None, **kwargs):
+        if config is not None:
+            self.config = config
+        else:
+            self.config = KalmanConfig(**kwargs)
+        self.alpha_ratio = self.config.alpha_ratio
+        self.warmup = self.config.warmup
+        self.gap_P_multiplier = self.config.gap_P_multiplier
 
     def estimate(self, aligned: AlignedPair) -> HedgeResult:
         log_a = np.log(aligned.df["close_a"].values)
