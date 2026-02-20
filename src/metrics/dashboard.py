@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from src.stats.stationarity import adf_rolling
+from src.stats.stationarity import adf_statistic_simple
 from src.stats.hurst import hurst_rolling
 from src.stats.halflife import half_life_rolling
 from src.stats.correlation import rolling_correlation
@@ -47,7 +47,7 @@ def compute_all_metrics(
     """
     return pd.DataFrame(
         {
-            "adf_stat": adf_rolling(spread, window=config.adf_window),
+            "adf_stat": adf_statistic_simple(spread, window=config.adf_window),
             "hurst": hurst_rolling(spread, window=config.hurst_window),
             "half_life": half_life_rolling(spread, window=config.halflife_window),
             "correlation": rolling_correlation(close_a, close_b, window=config.correlation_window),

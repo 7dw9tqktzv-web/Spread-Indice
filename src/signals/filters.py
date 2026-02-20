@@ -1,9 +1,12 @@
-"""Regime filters that block entries when statistical conditions are unfavorable."""
+"""Regime and session filters that block entries when conditions are unfavorable."""
 
 from dataclasses import dataclass
+from datetime import time
 
 import numpy as np
 import pandas as pd
+
+from src.utils.time_utils import SessionConfig
 
 
 @dataclass(frozen=True)
@@ -94,3 +97,37 @@ def apply_regime_filter(
         prev = sig[t]
 
     return pd.Series(sig, index=signals.index, name="signal")
+
+
+def apply_trading_window_filter(
+    signals: pd.Series,
+    session: SessionConfig | None = None,
+) -> pd.Series:
+    """Force signals to 0 outside the trading window [trading_start, trading_end).
+
+    Bars outside the window cannot hold positions: any open position is
+    implicitly closed (signal → 0). This mirrors Phase 2 Sierra behavior
+    where the indicator computes on all bars but the trader only acts
+    within the liquid window.
+
+    Parameters
+    ----------
+    signals : pd.Series
+        Signals from SignalGenerator or after regime filter ({+1, 0, -1}).
+    session : SessionConfig
+        Contains trading_start and trading_end times (Chicago Time).
+
+    Returns
+    -------
+    pd.Series of {+1, 0, -1} — signals zeroed outside the trading window.
+    """
+    if session is None:
+        session = SessionConfig()
+
+    t_start = session.trading_start
+    t_end = session.trading_end
+
+    in_window = signals.index.map(lambda ts: t_start <= ts.time() < t_end)
+    sig = signals.copy()
+    sig[~in_window] = 0
+    return sig
