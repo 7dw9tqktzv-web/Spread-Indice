@@ -46,8 +46,8 @@ python scripts/run_all_pairs.py --workers 8
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/utils/`, `config/`
-- **Stubs only**: `src/metrics/`, `src/signals/`, `src/backtest/`, `src/optimisation/`, `scripts/`, `sierra/`, `tests/` (all `__init__.py` only)
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/` (dashboard), `src/signals/` (generator + filters), `src/utils/`, `config/`, `tests/` (26 tests)
+- **Stubs only**: `src/backtest/`, `src/optimisation/`, `scripts/`, `sierra/`
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
@@ -56,9 +56,11 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 
 ### Key Modules
 - **`src/data/`** — Pipeline: `loader.py` → `cleaner.py` → `resampler.py` → `alignment.py`. Cache via `cache.py` (Parquet)
-- **`src/hedge/`** — Hedge ratio estimators behind `HedgeRatioEstimator` ABC (`base.py`). Implemented: `ols_rolling.py`, `kalman.py`
+- **`src/hedge/`** — Hedge ratio estimators behind `HedgeRatioEstimator` ABC (`base.py`). Implemented: `ols_rolling.py`, `kalman.py`. Factory dispatch via `factory.py` (keyed on `HedgeMethod` enum). Config dataclasses: `OLSRollingConfig`, `KalmanConfig`
 - **`src/sizing/`** — Dollar-neutral × β position sizing (scalar + vectorized): `N_b = round((Notionnel_A / Notionnel_B) × β × N_a)`
-- **`src/stats/`** — Statistical functions: hurst (R/S), halflife (AR(1)), correlation, stationarity (2 ADF variants — one statsmodels, one custom for C++ parity)
+- **`src/stats/`** — Low-level statistical functions: hurst (R/S), halflife (AR(1)), correlation, stationarity (2 ADF variants)
+- **`src/metrics/`** — Aggregation layer (`dashboard.py`): `MetricsConfig` + `compute_all_metrics()` calls `src/stats/` functions, returns DataFrame with `adf_stat, hurst, half_life, correlation`
+- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: regime filters (ADF/Hurst/correlation/half-life) block entries, never exits
 - **`src/spread/`** — `SpreadPair` dataclass (`pair.py`)
 - **`config/`** — YAML configs: `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
 - **`sierra/`** — Phase 2 ACSIL C++ indicator (header-only libs, online algorithms)
@@ -78,6 +80,12 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update.
 
 7. **Two ADF implementations in `stationarity.py`**: `adf_rolling()` (statsmodels) and `adf_statistic_simple()` (custom, no augmentation) — the simple one is designed for Python/C++ parity testing.
+
+8. **Regression convention (OLS + Kalman aligned)**: `log_a = α + β × log_b + ε` — leg_a is dependent, leg_b is explanatory. Both estimators use this same convention. β is directly usable in the sizing formula.
+
+9. **Signal generator has 4 states, not 3**: FLAT → LONG/SHORT → COOLDOWN → FLAT. After a stop loss, the COOLDOWN state blocks re-entry until `|z| < z_exit` (spread must return to neutral). NaN resets to FLAT (clean session start).
+
+10. **`src/stats/` vs `src/metrics/`**: `stats/` contains pure computation functions (rolling hurst, halflife, etc.). `metrics/dashboard.py` is the aggregation layer that calls `stats/` and returns a unified DataFrame. They are separate layers, not duplicates.
 
 ### Instruments & Pairs
 - **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
