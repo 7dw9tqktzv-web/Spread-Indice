@@ -49,12 +49,11 @@ python scripts/run_grid.py --workers 20 --dry-run  # show counts only
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator + filters + trading window + confidence filter), `src/backtest/` (engine + performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py + run_grid.py), `tests/` (37 tests)
+- **Implemented**: `src/data/` (loader, cleaner, resampler multi-freq, alignment, cache), `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator + filters + trading window + confidence filter), `src/backtest/` (engine bar-by-bar + vectorized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, analyze_filters.py, validate_confidence.py), `tests/` (37 tests)
 - **Stubs only**: `src/optimisation/`, `sierra/` (reference docs ready)
-- **TODO**: Vectorize backtest engine for grid search performance
 
 ### Data Flow
-`raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
+`raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (1min/3min/5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
 
 Dependencies flow strictly downward. Config YAML files are loaded at script level and injected as dataclasses — modules never read config directly.
 
@@ -108,6 +107,11 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 - **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
 - **6 paires** : NQ/ES, NQ/RTY, NQ/YM, ES/RTY, ES/YM, RTY/YM
 
+## Research Context
+**Toujours lire `CHANGELOG.md` en debut de session** pour avoir le contexte des derniers backtests effectues, resultats et decisions. Ce fichier est l'historique de recherche du projet — il evite de refaire des tests deja faits et permet de reprendre la ou on s'est arrete.
+
+Avant de proposer un test ou une config, verifier dans le changelog si ca n'a pas deja ete teste. Mettre a jour le changelog apres chaque serie de tests significative.
+
 ## Key Conventions
 - Toujours travailler en **venv**
 - Données en **Chicago Time (CT)**
@@ -117,18 +121,30 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 - Valider chaque étape avec l'utilisateur avant de passer à la suivante
 - Paramètres optimisés en Phase 1 avant implémentation Phase 2
 
-## Validated Parameters (5min)
-| Paramètre | Valeur |
-|-----------|--------|
-| Barres par jour | 264 (22h × 12 bars/h, session 17:30-15:30) |
-| OLS lookback | 7920 bars (30j × 264) |
-| Z-score OLS | 12 bars (1h) |
-| Corrélation | 12 bars (1h) |
-| ADF | 24 bars (2h) |
-| Hurst | 256 bars (~1j, variance-ratio method) |
-| Half-life | 24 bars (2h) |
-| Kalman alpha_ratio | 1e-5 (à optimiser: [1e-6, 1e-5, 1e-4]) |
-| Kalman warmup | 100 bars |
+## Validated Config — NQ_YM 5min (champion)
+
+Edge valide IS/OOS, Walk-Forward 6/6, Permutation p=0.000. Voir `CHANGELOG.md` pour le detail complet.
+
+| Paramètre | Valeur | Notes |
+|-----------|--------|-------|
+| Paire | NQ_YM | Seule paire avec edge robuste OLS |
+| Timeframe | 5min | 1min/3min testes, inferieurs |
+| OLS lookback | 2640 bars (10j) | Zone robuste grid search |
+| Z-score window | 36 bars (3h) | |
+| z_entry | 3.0 (ou 3.5) | 2.5 systematiquement perdant |
+| z_exit | 1.25 (sweet spot) | Plus de trades que 1.5, qualite maintenue |
+| z_stop | 4.0 | |
+| Profil metrics | tres_court | adf=12, hurst=64, hl=12, corr=6 |
+| min_confidence | 70% | Transition nette a 67%, optimum a 70% |
+| Barres par jour | 264 (22h × 12 bars/h) | Session 17:30-15:30 CT |
+
+### Configs alternatives validees
+| Config | Trades | PF | OOS PF | WF | Usage |
+|--------|--------|-----|--------|-----|-------|
+| e=3.5 x=1.25 c=70 | 74 | 2.93 | 2.98 | 6/6 | Qualite max |
+| e=3.0 x=1.25 c=70 | 144 | 1.99 | 1.56 | 6/6 | Equilibre |
+| e=3.0 x=1.50 c=70 | 94 | 2.22 | 2.14 | 5/6 | Reference |
+| e=3.0 x=0.50 c=67 | 503 | 1.25 | — | 5/6 | Volume (DD 22%) |
 
 ## Tech Stack
 - **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy, filterpy, optuna
