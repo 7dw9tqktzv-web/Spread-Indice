@@ -75,6 +75,8 @@ def _build_equity_curve(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
                          n, num_trades):
     """Build mark-to-market equity curve (numba-compiled)."""
     equity = np.full(n, initial_capital)
+    if num_trades == 0:
+        return equity
     cumulative_realized = 0.0
 
     for i in range(num_trades):
@@ -579,7 +581,7 @@ class BacktestEngine:
                     in_position = False
                     pos_side = 0
                     equity[t] = self.config.initial_capital + realized_pnl
-                    prev_sig = 0
+                    prev_sig = curr_sig  # keep signal state to prevent immediate re-entry
                     continue
 
                 equity[t] = self.config.initial_capital + realized_pnl + unrealized

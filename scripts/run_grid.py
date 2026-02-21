@@ -20,15 +20,18 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backtest.engine import run_backtest_vectorized
+from src.backtest.engine import run_backtest_grid
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.filters import ConfidenceConfig, compute_confidence
-from src.signals.generator import SignalConfig, SignalGenerator
+from src.signals.filters import (
+    ConfidenceConfig, compute_confidence,
+    _apply_conf_filter_numba, apply_window_filter_numba,
+)
+from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.utils.time_utils import SessionConfig, parse_session_config
+from src.utils.time_utils import parse_session_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,7 +52,7 @@ PAIRS = [
     ("ES", "RTY"), ("ES", "YM"), ("RTY", "YM"),
 ]
 
-OLS_WINDOWS = [1320, 2640, 3960, 5280, 6600, 7920]  # 5j→30j (264 bars/j)
+OLS_WINDOWS = [1320, 2640, 3960, 5280, 6600, 7920]  # 5j->30j (264 bars/j)
 
 ZSCORE_WINDOWS = [12, 20, 24, 36, 48]
 
@@ -99,8 +102,9 @@ class GridJob:
     mult_b: float
     tick_a: float
     tick_b: float
-    session_start_min: int  # trading window as minutes for vectorized filter
-    session_end_min: int
+    entry_start_min: int   # trading window entry start (minutes from midnight)
+    entry_end_min: int     # trading window entry end
+    flat_min: int          # force-flat time (session end)
 
 
 def run_full_job(job: GridJob) -> list[dict]:
@@ -115,7 +119,6 @@ def run_full_job(job: GridJob) -> list[dict]:
         px_a = aligned.df["close_a"].values
         px_b = aligned.df["close_b"].values
         idx = aligned.df.index
-        n = len(px_a)
 
         # --- Hedge ratio (once per job) ---
         est = create_estimator("ols_rolling", window=job.ols_window, zscore_window=ZSCORE_WINDOWS[0])
@@ -131,9 +134,8 @@ def run_full_job(job: GridJob) -> list[dict]:
         base_conf = ConfidenceConfig()
         confidence = compute_confidence(metrics, base_conf).values
 
-        # --- Trading window mask (once per job, vectorized) ---
-        minutes = idx.hour * 60 + idx.minute
-        tw_mask = (minutes >= job.session_start_min) & (minutes < job.session_end_min)
+        # --- Minutes array for window filter (once per job) ---
+        minutes = (idx.hour * 60 + idx.minute).values.astype(np.int32)
 
         # --- Z-scores for each window (once per job) ---
         zscores = {}
@@ -142,6 +144,7 @@ def run_full_job(job: GridJob) -> list[dict]:
             sigma = spread.rolling(zw).std()
             with np.errstate(divide="ignore", invalid="ignore"):
                 zs = ((spread - mu) / sigma).replace([np.inf, -np.inf], np.nan).values
+            zs = np.ascontiguousarray(zs, dtype=np.float64)
             zscores[zw] = zs
 
         # --- Loop over signal combos ---
@@ -151,38 +154,26 @@ def run_full_job(job: GridJob) -> list[dict]:
             zscore = zscores[zw]
 
             for z_entry, z_exit, z_stop in SIGNAL_COMBOS:
-                # Generate signals
-                sig_cfg = SignalConfig(z_entry=z_entry, z_exit=z_exit, z_stop=z_stop)
-                gen = SignalGenerator(config=sig_cfg)
-                raw_signals = gen.generate(pd.Series(zscore, index=idx)).values
+                # Generate signals (numba-compiled)
+                raw_signals = generate_signals_numba(zscore, z_entry, z_exit, z_stop)
 
                 for min_conf in MIN_CONFIDENCES:
-                    # Apply confidence filter (vectorized threshold)
-                    sig = raw_signals.copy()
-                    prev = 0
-                    for t in range(n):
-                        curr = sig[t]
-                        if (prev == 0) and (curr != 0) and (confidence[t] < min_conf):
-                            sig[t] = 0
-                        prev = sig[t]
+                    # Apply confidence filter (numba-compiled)
+                    sig_conf = _apply_conf_filter_numba(raw_signals, confidence, min_conf)
 
-                    # Apply trading window (vectorized mask)
-                    sig[~tw_mask] = 0
+                    # Apply entry window + flat EOD (numba-compiled)
+                    sig = apply_window_filter_numba(
+                        sig_conf, minutes,
+                        job.entry_start_min, job.entry_end_min, job.flat_min,
+                    )
 
-                    # Run vectorized backtest
-                    bt = run_backtest_vectorized(
+                    # Run grid-optimized backtest (no equity curve)
+                    bt = run_backtest_grid(
                         px_a, px_b, sig, beta,
                         mult_a=job.mult_a, mult_b=job.mult_b,
                         tick_a=job.tick_a, tick_b=job.tick_b,
                         slippage_ticks=1, commission=2.50,
-                        initial_capital=100_000.0,
                     )
-
-                    # Compute Sharpe/Calmar from equity
-                    eq = bt["equity"]
-                    sharpe = _compute_sharpe(eq)
-                    max_dd_pct = _compute_max_dd(eq)
-                    calmar = _compute_calmar(eq, max_dd_pct)
 
                     results.append({
                         "pair": job.pair_name,
@@ -198,48 +189,13 @@ def run_full_job(job: GridJob) -> list[dict]:
                         "pnl": bt["pnl"],
                         "profit_factor": bt["profit_factor"],
                         "avg_pnl_trade": bt["avg_pnl_trade"],
-                        "sharpe": round(sharpe, 2),
-                        "calmar": round(calmar, 2),
-                        "max_dd_pct": round(max_dd_pct, 2),
-                        "max_dd_dollar": round(max_dd_pct * 1000, 2),
                         "avg_duration_bars": bt["avg_duration_bars"],
-                        "max_duration_bars": bt["max_duration_bars"],
                     })
 
         return results
 
     except Exception as e:
         return [{"error": str(e), "pair": job.pair_name, "ols_window": job.ols_window}]
-
-
-def _compute_sharpe(eq: np.ndarray, bars_per_day: int = 264) -> float:
-    with np.errstate(divide="ignore", invalid="ignore"):
-        returns = np.diff(eq) / eq[:-1]
-    returns = np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
-    if len(returns) < 2 or np.std(returns) == 0:
-        return 0.0
-    return float((np.mean(returns) / np.std(returns)) * np.sqrt(bars_per_day * 252))
-
-
-def _compute_max_dd(eq: np.ndarray) -> float:
-    running_max = np.maximum.accumulate(eq)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dd = (running_max - eq) / running_max * 100
-    dd = np.nan_to_num(dd, nan=0.0)
-    return float(dd.max())
-
-
-def _compute_calmar(eq: np.ndarray, max_dd_pct: float, bars_per_day: int = 264) -> float:
-    if max_dd_pct <= 0 or eq[0] == 0:
-        return 0.0
-    total_return = (eq[-1] - eq[0]) / eq[0]
-    n_bars = len(eq)
-    bars_per_year = bars_per_day * 252
-    with np.errstate(invalid="ignore"):
-        ann_return = (1 + total_return) ** (bars_per_year / max(n_bars, 1)) - 1
-    if np.isnan(ann_return) or np.isinf(ann_return):
-        return 0.0
-    return float(ann_return * 100 / max_dd_pct)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -258,6 +214,7 @@ def main():
     # Precompute trading window as minutes
     tw_start_min = session.trading_start.hour * 60 + session.trading_start.minute
     tw_end_min = session.trading_end.hour * 60 + session.trading_end.minute
+    flat_min = session.session_end.hour * 60 + session.session_end.minute
 
     # Build jobs
     jobs = []
@@ -270,7 +227,8 @@ def main():
             ols_window=ols_w, profile_name=profile,
             mult_a=spec_a["multiplier"], mult_b=spec_b["multiplier"],
             tick_a=spec_a["tick_size"], tick_b=spec_b["tick_size"],
-            session_start_min=tw_start_min, session_end_min=tw_end_min,
+            entry_start_min=tw_start_min, entry_end_min=tw_end_min,
+            flat_min=flat_min,
         ))
 
     signal_combos_per_job = len(ZSCORE_WINDOWS) * len(SIGNAL_COMBOS) * len(MIN_CONFIDENCES)
@@ -288,7 +246,7 @@ def main():
     log.info(f"  Metric profiles: {list(METRIC_PROFILES.keys())}")
 
     if args.dry_run:
-        log.info("Dry run — exiting.")
+        log.info("Dry run -- exiting.")
         return
 
     t0 = time.time()
@@ -388,33 +346,30 @@ def generate_reports(df: pd.DataFrame):
     if len(filtered) > 0:
         f = filtered.copy()
 
+        # Score equilibre (no equity-derived metrics in grid mode)
         f["score_equilibre"] = (
-            0.30 * norm(f["sharpe"])
-            + 0.25 * norm(f["profit_factor"])
-            + 0.20 * norm(f["calmar"])
-            + 0.15 * norm(f["win_rate"])
+            0.40 * norm(f["profit_factor"])
+            + 0.25 * norm(f["win_rate"])
+            + 0.25 * norm(f["avg_pnl_trade"])
             + 0.10 * norm(f["trades"])
         )
 
         trading_days = 5 * 252
         f["daily_pnl"] = f["pnl"] / trading_days
         f["score_daily"] = (f["daily_pnl"] / 300).clip(0, 1)
-        f["score_dd"] = (1 - f["max_dd_dollar"] / 5000).clip(0, 1)
         f["score_consistency"] = ((f["win_rate"] - 40) / 30).clip(0, 1)
         f["score_pf"] = ((f["profit_factor"] - 1.0) / 2.0).clip(0, 1)
         f["score_propfirm"] = (
-            0.30 * f["score_daily"]
-            + 0.30 * f["score_dd"]
-            + 0.20 * f["score_consistency"]
-            + 0.20 * f["score_pf"]
+            0.40 * f["score_daily"]
+            + 0.30 * f["score_consistency"]
+            + 0.30 * f["score_pf"]
         )
 
         filtered = f
 
     rankings = [
         ("TOP 10 PNL", "pnl", False),
-        ("TOP 10 SHARPE", "sharpe", False),
-        ("TOP 10 CALMAR", "calmar", False),
+        ("TOP 10 PROFIT FACTOR", "profit_factor", False),
         ("TOP 10 EQUILIBRE", "score_equilibre", False),
         ("TOP 10 PROPFIRM", "score_propfirm", False),
     ]
@@ -427,33 +382,32 @@ def generate_reports(df: pd.DataFrame):
         log.info(f" {title}")
         log.info(f"{'='*90}")
         log.info(f" {'Pair':<8} {'OLS':>5} {'ZW':>3} {'Zent':>4} {'Zex':>4} {'Conf':>4} {'Prof':<10} "
-                 f"{'Trd':>4} {'Win%':>5} {'PnL':>10} {'PF':>5} {'Shrp':>5} {'DD%':>5} {'AvgD':>5}")
+                 f"{'Trd':>4} {'Win%':>5} {'PnL':>10} {'PF':>5} {'Avg$':>6} {'AvgD':>5}")
         log.info("-" * 90)
         for _, r in top.iterrows():
             log.info(
                 f" {r['pair']:<8} {r['ols_window']:>5} {r['zscore_window']:>3} "
                 f"{r['z_entry']:>4.1f} {r['z_exit']:>4.1f} {r['min_confidence']:>4.0f} "
                 f"{r['profil']:<10} {r['trades']:>4} {r['win_rate']:>5.1f} "
-                f"${r['pnl']:>9,.0f} {r['profit_factor']:>5.2f} {r['sharpe']:>5.2f} "
-                f"{r['max_dd_pct']:>5.1f} {r['avg_duration_bars']:>5.0f}"
+                f"${r['pnl']:>9,.0f} {r['profit_factor']:>5.2f} "
+                f"${r['avg_pnl_trade']:>5,.0f} {r['avg_duration_bars']:>5.0f}"
             )
 
     log.info(f"\n{'='*90}")
-    log.info(f" BEST CONFIG PER PAIR (by Sharpe)")
+    log.info(f" BEST CONFIG PER PAIR (by PF)")
     log.info(f"{'='*90}")
     for pair_name in [f"{a}_{b}" for a, b in PAIRS]:
         pair_df = filtered[filtered["pair"] == pair_name]
         if len(pair_df) == 0:
-            log.info(f" {pair_name:<8} — no profitable config")
+            log.info(f" {pair_name:<8} -- no profitable config")
             continue
-        best = pair_df.loc[pair_df["sharpe"].idxmax()]
+        best = pair_df.loc[pair_df["profit_factor"].idxmax()]
         log.info(
             f" {best['pair']:<8} OLS={best['ols_window']:>5} ZW={best['zscore_window']:>2} "
             f"Zent={best['z_entry']:.1f} Zex={best['z_exit']:.1f} Conf={best['min_confidence']:.0f} "
             f"Prof={best['profil']:<10} "
             f"Trd={best['trades']:>4} Win={best['win_rate']:.1f}% "
-            f"PnL=${best['pnl']:>,.0f} PF={best['profit_factor']:.2f} Shrp={best['sharpe']:.2f} "
-            f"DD={best['max_dd_pct']:.1f}%"
+            f"PnL=${best['pnl']:>,.0f} PF={best['profit_factor']:.2f}"
         )
 
     csv_path = OUTPUT_DIR / "grid_results_ols_filtered.csv"
