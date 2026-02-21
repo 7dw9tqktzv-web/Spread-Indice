@@ -105,8 +105,11 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 16. **Half-life vectorized** via rolling covariance: `b = Cov(Z(t),Z(t-1)) / Var(Z(t-1))`, `HL = -ln(2)/ln(b)`. Instant vs 39s with per-bar lstsq.
 
 ### Instruments & Pairs
-- **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
-- **6 paires** : NQ/ES, NQ/RTY, NQ/YM, ES/RTY, ES/YM, RTY/YM
+- **6 instruments** : NQ, ES, RTY, YM (standards) + MNQ, MYM (micros) — contrats continus, Volume Rollover Back-Adjusted
+- **7 paires** : NQ/ES, NQ/RTY, NQ/YM, ES/RTY, ES/YM, RTY/YM, MNQ/MYM
+- **Micros** : MNQ/MYM = 1/10eme du standard, memes prix, tick identique, commission $0.79/side
+- **Sizing** : `find_optimal_multiplier()` minimise l'erreur d'arrondi (max_multiplier configurable, defaut 1)
+- **Dollar stop** : `dollar_stop` dans BacktestConfig (defaut 0 = desactive). Non recommande sur NQ/YM standard (coupe les trades trop tot)
 
 ## Research Context
 **Toujours lire `CHANGELOG.md` en debut de session** pour avoir le contexte des derniers backtests effectues, resultats et decisions. Ce fichier est l'historique de recherche du projet — il evite de refaire des tests deja faits et permet de reprendre la ou on s'est arrete.

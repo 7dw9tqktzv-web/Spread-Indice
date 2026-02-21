@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-from src.sizing.position import calculate_position_size
+from src.sizing.position import calculate_position_size, find_optimal_multiplier
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,7 @@ class BacktestConfig:
     initial_capital: float = 100_000.0
     commission_per_contract: float = 2.50  # per side per contract
     slippage_ticks: int = 1
+    dollar_stop: float = 0.0  # 0 = disabled, > 0 = max loss per trade in $
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,41 @@ def _build_equity_curve(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
 
 
 # ---------------------------------------------------------------------------
+# Numba-compiled dollar stop loss
+# ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
+                        n_a, n_b, mult_a, mult_b, dollar_stop):
+    """Advance exit bars if unrealized loss exceeds dollar_stop.
+
+    Checks each bar during a trade. If unrealized PnL drops below -dollar_stop,
+    forces exit at that bar (checked at bar close, approximate on 5min).
+
+    Returns: tx_modified (np.ndarray) — exit bars, potentially earlier.
+    """
+    tx_mod = tx.copy()
+    for i in range(len(te)):
+        eb = te[i]
+        xb = tx[i]
+        side = sides[i]
+        e_a = entry_px_a[i]
+        e_b = entry_px_b[i]
+        na = n_a[i]
+        nb = n_b[i]
+
+        for t in range(eb, xb):
+            da = px_a[t] - e_a
+            db = px_b[t] - e_b
+            unrealized = side * (na * da * mult_a - nb * db * mult_b)
+            if unrealized < -dollar_stop:
+                tx_mod[i] = t
+                break
+
+    return tx_mod
+
+
+# ---------------------------------------------------------------------------
 # Vectorized backtest (fast, for grid search)
 # ---------------------------------------------------------------------------
 
@@ -117,6 +153,8 @@ def run_backtest_vectorized(
     slippage_ticks: int = 1,
     commission: float = 2.50,
     initial_capital: float = 100_000.0,
+    max_multiplier: int = 1,
+    dollar_stop: float = 0.0,
 ) -> dict:
     """Vectorized backtest — returns summary dict (no Trade objects).
 
@@ -209,12 +247,27 @@ def run_backtest_vectorized(
     with np.errstate(divide="ignore", invalid="ignore"):
         n_b_raw = (not_a / not_b) * np.abs(b)
     n_b_raw = np.nan_to_num(n_b_raw, nan=1.0, posinf=1.0, neginf=1.0)
-    n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
-    n_a = np.ones(num_trades, dtype=int)
+
+    if max_multiplier > 1:
+        # Apply optimal multiplier per trade to minimize hedge error
+        n_a = np.ones(num_trades, dtype=int)
+        n_b = np.ones(num_trades, dtype=int)
+        for i in range(num_trades):
+            _, na_i, nb_i, _ = find_optimal_multiplier(n_b_raw[i], max_multiplier)
+            n_a[i] = na_i
+            n_b[i] = nb_i
+    else:
+        n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
+        n_a = np.ones(num_trades, dtype=int)
 
     # Slippage at entry
     entry_px_a = px_a[te] + sides * slippage_ticks * tick_a
     entry_px_b = px_b[te] - sides * slippage_ticks * tick_b
+
+    # Dollar stop: may modify exit bars
+    if dollar_stop > 0:
+        tx = _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
+                                n_a, n_b, mult_a, mult_b, dollar_stop)
 
     # Slippage at exit
     exit_px_a = px_a[tx] - sides * slippage_ticks * tick_a
@@ -278,6 +331,8 @@ def run_backtest_grid(
     tick_b: float,
     slippage_ticks: int = 1,
     commission: float = 2.50,
+    max_multiplier: int = 1,
+    dollar_stop: float = 0.0,
 ) -> dict:
     """Lightweight backtest for grid search — no equity curve, no MtM.
 
@@ -329,11 +384,25 @@ def run_backtest_grid(
     with np.errstate(divide="ignore", invalid="ignore"):
         n_b_raw = (not_a / not_b) * np.abs(b)
     n_b_raw = np.nan_to_num(n_b_raw, nan=1.0, posinf=1.0, neginf=1.0)
-    n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
-    n_a = np.ones(num_trades, dtype=int)
+
+    if max_multiplier > 1:
+        n_a = np.ones(num_trades, dtype=int)
+        n_b = np.ones(num_trades, dtype=int)
+        for i in range(num_trades):
+            _, na_i, nb_i, _ = find_optimal_multiplier(n_b_raw[i], max_multiplier)
+            n_a[i] = na_i
+            n_b[i] = nb_i
+    else:
+        n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
+        n_a = np.ones(num_trades, dtype=int)
 
     entry_px_a = px_a[te] + sides * slippage_ticks * tick_a
     entry_px_b = px_b[te] - sides * slippage_ticks * tick_b
+
+    if dollar_stop > 0:
+        tx = _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
+                                n_a, n_b, mult_a, mult_b, dollar_stop)
+
     exit_px_a = px_a[tx] - sides * slippage_ticks * tick_a
     exit_px_b = px_b[tx] + sides * slippage_ticks * tick_b
 
@@ -479,6 +548,40 @@ class BacktestEngine:
                     pos_n_a * delta_a * spec_a.multiplier
                     - pos_n_b * delta_b * spec_b.multiplier
                 )
+
+                # Dollar stop: force exit if unrealized loss exceeds threshold
+                if self.config.dollar_stop > 0 and unrealized < -self.config.dollar_stop:
+                    exit_price_a = _apply_slippage(
+                        px_a[t], spec_a.tick_size, self.config.slippage_ticks, -pos_side
+                    )
+                    exit_price_b = _apply_slippage(
+                        px_b[t], spec_b.tick_size, self.config.slippage_ticks, pos_side
+                    )
+                    da = exit_price_a - entry_price_a
+                    db = exit_price_b - entry_price_b
+                    pnl_gross = pos_side * (
+                        pos_n_a * da * spec_a.multiplier
+                        - pos_n_b * db * spec_b.multiplier
+                    )
+                    costs = self.config.commission_per_contract * (pos_n_a + pos_n_b) * 2
+                    pnl_net = pnl_gross - costs
+
+                    trades.append(Trade(
+                        entry_bar=entry_bar, exit_bar=t,
+                        entry_time=idx[entry_bar], exit_time=idx[t],
+                        side=pos_side,
+                        entry_price_a=entry_price_a, entry_price_b=entry_price_b,
+                        exit_price_a=exit_price_a, exit_price_b=exit_price_b,
+                        n_a=pos_n_a, n_b=pos_n_b,
+                        pnl_gross=pnl_gross, costs=costs, pnl_net=pnl_net,
+                    ))
+                    realized_pnl += pnl_net
+                    in_position = False
+                    pos_side = 0
+                    equity[t] = self.config.initial_capital + realized_pnl
+                    prev_sig = 0
+                    continue
+
                 equity[t] = self.config.initial_capital + realized_pnl + unrealized
             else:
                 equity[t] = self.config.initial_capital + realized_pnl

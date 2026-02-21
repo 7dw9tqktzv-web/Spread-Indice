@@ -29,3 +29,19 @@ YM:
   tick_value: 5.0
   commission: 2.50
   margin: 9500.0
+
+MNQ:
+  exchange: CME
+  multiplier: 2.0
+  tick_size: 0.25
+  tick_value: 0.5
+  commission: 0.79
+  margin: 1800.0
+
+MYM:
+  exchange: CME
+  multiplier: 0.5
+  tick_size: 1.0
+  tick_value: 0.5
+  commission: 0.79
+  margin: 950.0

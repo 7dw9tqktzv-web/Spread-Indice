@@ -36,3 +36,5 @@ backtest:
   initial_capital: 100000.0
   commission_per_contract: 2.50
   slippage_ticks: 1
+  dollar_stop: 0.0              # 0 = disabled, > 0 = max loss per trade in $
+  max_multiplier: 1             # lot multiplier for micro contracts (1 = no multiplier)

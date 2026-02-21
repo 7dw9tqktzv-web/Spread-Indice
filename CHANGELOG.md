@@ -309,3 +309,27 @@ Parametres scales proportionnellement au timeframe (meme duree temporelle) :
 - **Config E** : principale (meilleur compromis volume/qualite, OOS > IS)
 - **Config C** : backup (plus de volume avec filtre horaire 8h-11h)
 - **Config B** : eliminee (Walk-Forward 2/5, instable)
+
+### Test 6.4 — Micro-contrats, multiplicateur de lots, SL dollar
+
+**Implementes** : MNQ/MYM dans instruments.yaml, `find_optimal_multiplier()` (sizing),
+`_apply_dollar_stop()` (numba), params `max_multiplier` + `dollar_stop` dans les 3 engines.
+
+**Script** : `scripts/compare_micro_sizing.py`
+
+| Config | Trd | WR% | PnL | PF | Sharpe | MaxDD |
+|--------|-----|-----|-----|----|--------|-------|
+| NQ/YM x1 (baseline) | 225 | 67.1% | $25,790 | 1.83 | 1.07 | -$5,190 |
+| NQ/YM x2 | 225 | 69.3% | $35,485 | 1.71 | 0.93 | -$10,140 |
+| NQ/YM x2 SL$500 | 225 | 56.0% | -$5,840 | 0.92 | -0.20 | -$17,175 |
+| NQ/YM x2 SL$1000 | 225 | 63.1% | $3,685 | 1.05 | 0.15 | -$16,265 |
+| NQ/YM x3 | 225 | 68.9% | $53,015 | 1.75 | 0.87 | -$16,405 |
+| MNQ/MYM x3 | 225 | 63.1% | $3,754 | 1.50 | 0.63 | -$1,817 |
+| MNQ/MYM x3 SL$500 | 225 | 63.1% | $4,801 | 1.74 | 0.87 | -$1,029 |
+
+**Conclusions** :
+- **SL dollar inadapte au NQ/YM standard** : coupe les trades avant retour a la moyenne (tous SL < $1000 perdants)
+- **Micros** : PF inferieur (commissions pesent plus proportionnellement), pas d'avantage vs standard
+- **mm=2 viable** sur compte perso (MaxDD $10k), **mm=1 pour propfirm** ($5k DD)
+- **mm=3** : PnL x2 mais MaxDD x3 ($16k) — trop risque
+- **Decision** : rester sur NQ/YM standard x1, SL dollar desactive. Multiplicateur et micros disponibles pour scaling futur

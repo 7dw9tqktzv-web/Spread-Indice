@@ -8,6 +8,8 @@ class Instrument(str, Enum):
     ES = "ES"
     RTY = "RTY"
     YM = "YM"
+    MNQ = "MNQ"
+    MYM = "MYM"
 
 
 class HedgeMethod(str, Enum):
@@ -25,6 +27,7 @@ PAIRS = [
     (Instrument.ES, Instrument.RTY),
     (Instrument.ES, Instrument.YM),
     (Instrument.RTY, Instrument.YM),
+    (Instrument.MNQ, Instrument.MYM),
 ]
 
 # Sierra Charts CSV column mapping
