@@ -32,13 +32,16 @@ python -m pytest tests/ --cov=src --cov-report=html
 
 # Run backtest pipeline
 python scripts/run_backtest.py --pair NQ_ES --method ols_rolling
+python scripts/run_backtest.py --pair NQ_ES --method kalman --alpha-ratio 1e-6
 python scripts/run_backtest.py --prepare-data  # data prep only
+python scripts/run_backtest.py --all --method kalman  # all 6 pairs
 
-# Run optimisation
-python scripts/run_optimisation.py --pair NQ_ES --method ols_rolling --engine optuna
+# CLI overrides
+python scripts/run_backtest.py --pair NQ_ES --method ols_rolling --z-entry 2.5 --z-exit 1.5 --z-stop 3.5 --ols-window 3960 --min-confidence 50
 
-# Run all pairs in parallel
-python scripts/run_all_pairs.py --workers 8
+# Grid search (43,200 backtests, 6 pairs × all param combos)
+python scripts/run_grid.py --workers 20
+python scripts/run_grid.py --workers 20 --dry-run  # show counts only
 ```
 
 **Important**: All scripts must be run from the project root (cache uses relative path `output/cache`).
@@ -46,8 +49,9 @@ python scripts/run_all_pairs.py --workers 8
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/` (dashboard), `src/signals/` (generator + filters + trading window), `src/backtest/` (engine + performance), `src/utils/`, `config/`, `tests/` (37 tests)
-- **Stubs only**: `src/optimisation/`, `scripts/`, `sierra/` (reference docs ready)
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator + filters + trading window + confidence filter), `src/backtest/` (engine + performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py + run_grid.py), `tests/` (37 tests)
+- **Stubs only**: `src/optimisation/`, `sierra/` (reference docs ready)
+- **TODO**: Vectorize backtest engine for grid search performance
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
@@ -58,9 +62,9 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 - **`src/data/`** — Pipeline: `loader.py` → `cleaner.py` → `resampler.py` → `alignment.py`. Cache via `cache.py` (Parquet)
 - **`src/hedge/`** — Hedge ratio estimators behind `HedgeRatioEstimator` ABC (`base.py`). Implemented: `ols_rolling.py`, `kalman.py`. Factory dispatch via `factory.py` (keyed on `HedgeMethod` enum). Config dataclasses: `OLSRollingConfig`, `KalmanConfig`
 - **`src/sizing/`** — Dollar-neutral × β position sizing (scalar + vectorized): `N_b = round((Notionnel_A / Notionnel_B) × β × N_a)`
-- **`src/stats/`** — Low-level statistical functions: hurst (R/S), halflife (AR(1)), correlation, stationarity (2 ADF variants)
+- **`src/stats/`** — Low-level statistical functions: hurst (variance-ratio, vectorized), halflife (AR(1) via rolling cov, vectorized), correlation, stationarity (2 ADF variants)
 - **`src/metrics/`** — Aggregation layer (`dashboard.py`): `MetricsConfig` + `compute_all_metrics()` calls `src/stats/` functions, returns DataFrame with `adf_stat, hurst, half_life, correlation`
-- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: regime filters (ADF/Hurst/correlation/half-life) block entries, never exits + trading window filter [04:00-14:00) CT zeros signals outside window (forced flat at end)
+- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: confidence scoring system (ADF 40% + Hurst 25% + Corr 20% + HL 15%, ADF gate at -1.00) + legacy binary regime filter + trading window filter [04:00-14:00) CT
 - **`src/backtest/`** — `engine.py`: event-driven BacktestEngine with mark-to-market equity, directional slippage per leg, dollar-neutral sizing, commission costs. `performance.py`: PerformanceMetrics (Sharpe, drawdown, Calmar, profit factor)
 - **`src/spread/`** — `SpreadPair` dataclass (`pair.py`)
 - **`config/`** — YAML configs: `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
@@ -88,9 +92,17 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 
 10. **`src/stats/` vs `src/metrics/`**: `stats/` contains pure computation functions (rolling hurst, halflife, etc.). `metrics/dashboard.py` is the aggregation layer that calls `stats/` and returns a unified DataFrame. They are separate layers, not duplicates.
 
-11. **Calculate vs Act separation**: Hedge ratio + metrics compute on full Globex session (18:00-15:00 CT) for stable estimation. Signals + trades restricted to [04:00-14:00) CT via `apply_trading_window_filter()`. Position open at 13:55 is force-closed at 14:00 (signal → 0).
+11. **Calculate vs Act separation**: Hedge ratio + metrics compute on full Globex session (17:30-15:30 CT, buffer_minutes=0). Signals + trades restricted to [04:00-14:00) CT via `apply_trading_window_filter()`. Position open at 13:55 is force-closed at 14:00 (signal → 0).
 
 12. **ADF in dashboard uses `adf_statistic_simple()`** (statistics ~-3.5, threshold -2.86), NOT `adf_rolling()` (p-values 0-1). The simple variant is Sierra C++ compatible.
+
+13. **Confidence scoring** replaces binary regime filter: each metric produces a score 0→1 via linear interpolation, weighted (ADF 40%, Hurst 25%, Corr 20%, HL 15%), with ADF gate at stat ≥ -1.00 → 0%. `min_confidence` threshold (default 50%) is optimizable.
+
+14. **Session is 17:30-15:30 CT** (already buffered vs Globex 17:00-16:00). `buffer_minutes=0` in config. 264 bars/day. OLS windows: 1320 (5j), 2640 (10j), ..., 7920 (30j).
+
+15. **Hurst uses variance-ratio** (not R/S). R/S gives biased ~0.99 on spread levels (cumsum-on-cumsum). Variance-ratio works on levels directly, gives H~0.41 median for NQ/ES. Vectorized via precomputed rolling std.
+
+16. **Half-life vectorized** via rolling covariance: `b = Cov(Z(t),Z(t-1)) / Var(Z(t-1))`, `HL = -ln(2)/ln(b)`. Instant vs 39s with per-bar lstsq.
 
 ### Instruments & Pairs
 - **4 instruments** : NQ, ES, RTY, YM (contrats continus, Volume Rollover Back-Adjusted)
@@ -108,11 +120,12 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 ## Validated Parameters (5min)
 | Paramètre | Valeur |
 |-----------|--------|
-| OLS lookback | 7200 bars (30j) |
+| Barres par jour | 264 (22h × 12 bars/h, session 17:30-15:30) |
+| OLS lookback | 7920 bars (30j × 264) |
 | Z-score OLS | 12 bars (1h) |
 | Corrélation | 12 bars (1h) |
 | ADF | 24 bars (2h) |
-| Hurst | 64 bars (~5h20) |
+| Hurst | 256 bars (~1j, variance-ratio method) |
 | Half-life | 24 bars (2h) |
 | Kalman alpha_ratio | 1e-5 (à optimiser: [1e-6, 1e-5, 1e-4]) |
 | Kalman warmup | 100 bars |

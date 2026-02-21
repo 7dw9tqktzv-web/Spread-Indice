@@ -12,7 +12,7 @@ from statsmodels.tsa.stattools import adfuller
 
 # --- Simplified ADF (Sierra Chart compatible) ---
 
-def adf_statistic_simple(spread: pd.Series, window: int = 24) -> pd.Series:
+def adf_statistic_simple(spread: pd.Series, window: int = 24, step: int = 1) -> pd.Series:
     """Rolling simplified ADF statistic (compatible Sierra Chart v1.5).
 
     Regression: ΔZ(t) = μ + γ·Z(t-1) + ε
@@ -30,7 +30,7 @@ def adf_statistic_simple(spread: pd.Series, window: int = 24) -> pd.Series:
     result = np.full(n, np.nan)
     n_pts = window - 1  # pairs (delta, lag) in each window
 
-    for i in range(window, n):
+    for i in range(window, n, step):
         d = delta[i - n_pts:i]
         l = lag[i - n_pts:i]
 
@@ -66,7 +66,10 @@ def adf_statistic_simple(spread: pd.Series, window: int = 24) -> pd.Series:
         if se_gamma > 0:
             result[i] = gamma / se_gamma
 
-    return pd.Series(result, index=spread.index, name="adf_simple")
+    out = pd.Series(result, index=spread.index, name="adf_simple")
+    if step > 1:
+        out = out.ffill()
+    return out
 
 
 # --- Full ADF (statsmodels) ---

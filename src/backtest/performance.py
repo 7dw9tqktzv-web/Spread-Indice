@@ -88,7 +88,9 @@ def compute_performance(result: BacktestResult, bars_per_day: int = 120) -> Perf
             current_duration = 0
 
     # Sharpe ratio (annualized from bar returns)
-    returns = np.diff(eq) / eq[:-1]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        returns = np.diff(eq) / eq[:-1]
+    returns = np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
     bars_per_year = bars_per_day * 252
     if len(returns) > 1 and np.std(returns) > 0:
         sharpe = (np.mean(returns) / np.std(returns)) * np.sqrt(bars_per_year)
@@ -96,9 +98,12 @@ def compute_performance(result: BacktestResult, bars_per_day: int = 120) -> Perf
         sharpe = 0.0
 
     # Calmar ratio
-    total_return = (eq[-1] - eq[0]) / eq[0]
+    total_return = (eq[-1] - eq[0]) / eq[0] if eq[0] != 0 else 0.0
     n_bars = len(eq)
-    annualized_return = (1 + total_return) ** (bars_per_year / max(n_bars, 1)) - 1
+    with np.errstate(invalid="ignore"):
+        annualized_return = (1 + total_return) ** (bars_per_year / max(n_bars, 1)) - 1
+    if np.isnan(annualized_return) or np.isinf(annualized_return):
+        annualized_return = 0.0
     calmar = (annualized_return * 100) / max_drawdown_pct if max_drawdown_pct > 0 else float("inf")
 
     return PerformanceMetrics(

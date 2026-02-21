@@ -20,6 +20,7 @@ class MetricsConfig:
     hurst_window: int = 64
     halflife_window: int = 24
     correlation_window: int = 12
+    step: int = 1              # compute every N bars for ADF/halflife (1=every bar)
 
 
 def compute_all_metrics(
@@ -45,11 +46,12 @@ def compute_all_metrics(
         Columns: adf_stat, hurst, half_life, correlation.
         Indexed by timestamp.
     """
+    step = config.step
     return pd.DataFrame(
         {
-            "adf_stat": adf_statistic_simple(spread, window=config.adf_window),
-            "hurst": hurst_rolling(spread, window=config.hurst_window),
-            "half_life": half_life_rolling(spread, window=config.halflife_window),
+            "adf_stat": adf_statistic_simple(spread, window=config.adf_window, step=step),
+            "hurst": hurst_rolling(spread, window=config.hurst_window, step=step),
+            "half_life": half_life_rolling(spread, window=config.halflife_window, step=step),
             "correlation": rolling_correlation(close_a, close_b, window=config.correlation_window),
         },
         index=spread.index,

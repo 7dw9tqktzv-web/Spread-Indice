@@ -2,7 +2,7 @@
 session:
   session_start: "17:30"
   session_end: "15:30"
-  buffer_minutes: 30
+  buffer_minutes: 0           # session 17:30-15:30 est déjà bufferisée vs Globex 17:00-16:00
   trading_start: "04:00"
   trading_end: "14:00"
 
@@ -22,7 +22,7 @@ metrics:
   correlation_window: 12    # 1 heure
   correlation_min: 0.8      # seuil configurable
   adf_window: 24            # 2 heures
-  hurst_window: 64          # ~5h20
+  hurst_window: 256         # ~21h20 (~1 jour de session)
   halflife_window: 24       # 2 heures
 
 # Default signal parameters
