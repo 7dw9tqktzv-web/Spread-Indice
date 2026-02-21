@@ -3,10 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
-output/cache/
-output/results/
-output/reports/
-output/params/
+output/
 *.egg-info/
 dist/
 build/
@@ -16,3 +13,18 @@ build/
 *.obj
 .claude/
 .mcp.json
+
+# Data
+Data/
+raw/
+
+# IDE / linter
+.vscode/
+pyrightconfig.json
+
+# Sierra templates/examples/docs
+sierra/*.cpp
+sierra/*.md
+
+# Temp
+commit_review.txt
