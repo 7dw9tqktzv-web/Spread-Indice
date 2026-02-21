@@ -22,7 +22,7 @@ class PerformanceMetrics:
     calmar_ratio: float         # annualized return / max drawdown
 
 
-def compute_performance(result: BacktestResult, bars_per_day: int = 120) -> PerformanceMetrics:
+def compute_performance(result: BacktestResult, bars_per_day: int = 264) -> PerformanceMetrics:
     """Compute performance metrics from a BacktestResult.
 
     Parameters

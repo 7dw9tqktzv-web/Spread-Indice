@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from numba import njit
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,66 @@ _FLAT = 0
 _LONG = 1
 _SHORT = -1
 _COOLDOWN = 2  # after stop, wait for z to return to neutral
+
+
+# ---------------------------------------------------------------------------
+# Numba-compiled state machine (~100x faster than Python loop)
+# ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def generate_signals_numba(z: np.ndarray, z_entry: float, z_exit: float,
+                            z_stop: float) -> np.ndarray:
+    """Generate signals from z-score via 4-state machine (numba-compiled).
+
+    States: FLAT (0), LONG (+1), SHORT (-1), COOLDOWN (2, emits 0)
+    NaN in zscore forces FLAT.
+
+    Returns np.ndarray of int8 {+1, 0, -1}.
+    """
+    n = len(z)
+    signals = np.zeros(n, dtype=np.int8)
+    state = 0  # FLAT
+
+    for t in range(n):
+        zt = z[t]
+
+        # NaN → force flat
+        if np.isnan(zt):
+            state = 0
+            signals[t] = 0
+            continue
+
+        if state == 0:  # FLAT
+            if zt < -z_entry:
+                state = 1   # LONG
+            elif zt > z_entry:
+                state = -1  # SHORT
+
+        elif state == 1:  # LONG
+            if zt > -z_exit:
+                state = 0   # mean-reversion exit
+            elif zt < -z_stop:
+                state = 2   # COOLDOWN
+
+        elif state == -1:  # SHORT
+            if zt < z_exit:
+                state = 0   # mean-reversion exit
+            elif zt > z_stop:
+                state = 2   # COOLDOWN
+
+        elif state == 2:  # COOLDOWN
+            if abs(zt) < z_exit:
+                state = 0   # spread returned to neutral
+
+        # COOLDOWN emits 0
+        if state == 1:
+            signals[t] = 1
+        elif state == -1:
+            signals[t] = -1
+        else:
+            signals[t] = 0
+
+    return signals
 
 
 class SignalGenerator:
@@ -49,43 +110,10 @@ class SignalGenerator:
 
         Returns pd.Series of {+1, 0, -1} indexed like zscore.
         """
-        z = zscore.values
-        n = len(z)
-        signals = np.zeros(n, dtype=np.int8)
-        state = _FLAT
-
-        for t in range(n):
-            zt = z[t]
-
-            # NaN → force flat (reset cooldown too)
-            if np.isnan(zt):
-                state = _FLAT
-                signals[t] = _FLAT
-                continue
-
-            if state == _FLAT:
-                if zt < -self.config.z_entry:
-                    state = _LONG
-                elif zt > self.config.z_entry:
-                    state = _SHORT
-
-            elif state == _LONG:
-                if zt > -self.config.z_exit:
-                    state = _FLAT  # mean-reversion exit
-                elif zt < -self.config.z_stop:
-                    state = _COOLDOWN  # stop → cooldown
-
-            elif state == _SHORT:
-                if zt < self.config.z_exit:
-                    state = _FLAT  # mean-reversion exit
-                elif zt > self.config.z_stop:
-                    state = _COOLDOWN  # stop → cooldown
-
-            elif state == _COOLDOWN:
-                if abs(zt) < self.config.z_exit:
-                    state = _FLAT  # spread returned to neutral
-
-            # COOLDOWN emits 0 (flat) — it's an internal state
-            signals[t] = state if state in (_LONG, _SHORT) else _FLAT
-
+        signals = generate_signals_numba(
+            zscore.values.astype(np.float64),
+            self.config.z_entry,
+            self.config.z_exit,
+            self.config.z_stop,
+        )
         return pd.Series(signals, index=zscore.index, name="signal")

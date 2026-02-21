@@ -49,8 +49,9 @@ python scripts/run_grid.py --workers 20 --dry-run  # show counts only
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/` (loader, cleaner, resampler multi-freq, alignment, cache), `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator + filters + trading window + confidence filter), `src/backtest/` (engine bar-by-bar + vectorized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, analyze_filters.py, validate_confidence.py), `tests/` (37 tests)
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator numba + filters numba + confidence filter + time stop + window filter), `src/backtest/` (engine bar-by-bar + vectorized + grid-optimized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, run_refined_grid.py, analyze_grid_results.py, validate_top5_configs.py, validate_numba.py), `tests/` (37 tests)
 - **Stubs only**: `src/optimisation/`, `sierra/` (reference docs ready)
+- **Numba JIT**: signal generator (451x), confidence filter, time stop, window filter — all validated identical to Python originals
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) → `loader.py` → `cleaner.py` → `resampler.py` (1min/3min/5min) → `alignment.py` (pair) → `hedge/` (ratio) → `spread/builder.py` → `metrics/` → `signals/` → `backtest/engine.py` → `performance.py`
@@ -63,8 +64,8 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 - **`src/sizing/`** — Dollar-neutral × β position sizing (scalar + vectorized): `N_b = round((Notionnel_A / Notionnel_B) × β × N_a)`
 - **`src/stats/`** — Low-level statistical functions: hurst (variance-ratio, vectorized), halflife (AR(1) via rolling cov, vectorized), correlation, stationarity (2 ADF variants)
 - **`src/metrics/`** — Aggregation layer (`dashboard.py`): `MetricsConfig` + `compute_all_metrics()` calls `src/stats/` functions, returns DataFrame with `adf_stat, hurst, half_life, correlation`
-- **`src/signals/`** — `generator.py`: stateful 4-state machine (FLAT/LONG/SHORT/COOLDOWN) for z-score threshold crossings. `filters.py`: confidence scoring system (ADF 40% + Hurst 25% + Corr 20% + HL 15%, ADF gate at -1.00) + legacy binary regime filter + trading window filter [04:00-14:00) CT
-- **`src/backtest/`** — `engine.py`: event-driven BacktestEngine with mark-to-market equity, directional slippage per leg, dollar-neutral sizing, commission costs. `performance.py`: PerformanceMetrics (Sharpe, drawdown, Calmar, profit factor)
+- **`src/signals/`** — `generator.py`: stateful 4-state machine (numba JIT, 451x speedup). `filters.py`: confidence scoring (vectorized numpy, 138x), `_apply_conf_filter_numba`, `apply_time_stop`, `apply_window_filter_numba` (all numba JIT) + legacy filters
+- **`src/backtest/`** — `engine.py`: BacktestEngine (bar-by-bar), `run_backtest_vectorized` (full with equity), `run_backtest_grid` (no equity, grid-optimized). `performance.py`: PerformanceMetrics
 - **`src/spread/`** — `SpreadPair` dataclass (`pair.py`)
 - **`config/`** — YAML configs: `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
 - **`sierra/`** — Phase 2 ACSIL C++ indicator (header-only libs, online algorithms). Reference docs: `infos_sierra.md` (config), `specs_actifs.md` (contract specs), `SC_*_REFERENCE.md` (ACSIL docs), example `.cpp` templates
@@ -121,30 +122,44 @@ Avant de proposer un test ou une config, verifier dans le changelog si ca n'a pa
 - Valider chaque étape avec l'utilisateur avant de passer à la suivante
 - Paramètres optimisés en Phase 1 avant implémentation Phase 2
 
-## Validated Config — NQ_YM 5min (champion)
+## Selected Config — Config E (principale) — NQ_YM 5min
 
-Edge valide IS/OOS, Walk-Forward 6/6, Permutation p=0.000. Voir `CHANGELOG.md` pour le detail complet.
+Issue du grid search affine 1,080,000 combos. Validee IS/OOS, Walk-Forward 4/5, Permutation p=0.000.
 
-| Paramètre | Valeur | Notes |
+| Parametre | Valeur | Notes |
 |-----------|--------|-------|
 | Paire | NQ_YM | Seule paire avec edge robuste OLS |
 | Timeframe | 5min | 1min/3min testes, inferieurs |
-| OLS lookback | 2640 bars (10j) | Zone robuste grid search |
-| Z-score window | 36 bars (3h) | |
-| z_entry | 3.0 (ou 3.5) | 2.5 systematiquement perdant |
-| z_exit | 1.25 (sweet spot) | Plus de trades que 1.5, qualite maintenue |
-| z_stop | 4.0 | |
+| OLS lookback | **3300 bars (~12.5j)** | Grid search affine |
+| Z-score window | **30 bars (2h30)** | Reactif |
+| z_entry | **3.15** | Zone plate 3.05-3.15 |
+| z_exit | **1.00** | Sort tot |
+| z_stop | **4.50** | Large |
 | Profil metrics | tres_court | adf=12, hurst=64, hl=12, corr=6 |
-| min_confidence | 70% | Transition nette a 67%, optimum a 70% |
-| Barres par jour | 264 (22h × 12 bars/h) | Session 17:30-15:30 CT |
+| min_confidence | **67%** | Transition nette a 67%, 70% trop restrictif pour volume |
+| Time stop | **none** | Degrade sur cette config |
+| Entry window | **02:00-14:00 CT** | |
+| Flat time | 15:30 CT | |
+| Barres par jour | 264 (22h x 12 bars/h) | Session 17:30-15:30 CT |
+| **Resultats** | **225 trades, 67.1% WR, $25,790, PF 1.83, Sharpe 1.26** | |
+| **OOS** | **PF 2.35, Sharpe 2.58 (meilleur que IS!)** | |
+| **Walk-Forward** | **4/5, $14,370 total** | |
 
-### Configs alternatives validees
-| Config | Trades | PF | OOS PF | WF | Usage |
-|--------|--------|-----|--------|-----|-------|
-| e=3.5 x=1.25 c=70 | 74 | 2.93 | 2.98 | 6/6 | Qualite max |
-| e=3.0 x=1.25 c=70 | 144 | 1.99 | 1.56 | 6/6 | Equilibre |
-| e=3.0 x=1.50 c=70 | 94 | 2.22 | 2.14 | 5/6 | Reference |
-| e=3.0 x=0.50 c=67 | 503 | 1.25 | — | 5/6 | Volume (DD 22%) |
+### Config C (backup) — NQ_YM 5min + filtre horaire
+
+| Parametre | Valeur |
+|-----------|--------|
+| OLS lookback | 2970 bars (~11.25j) |
+| Z-score window | 42 bars (3h30) |
+| z_entry | 2.95 |
+| z_exit | 1.25 |
+| z_stop | 4.00 |
+| min_confidence | 67% |
+| Time stop | none |
+| Entry window | 02:00-15:00 CT |
+| **Filtre horaire** | **Entrees 8h-11h CT uniquement** |
+| **Resultats (avec filtre)** | 151 trades, 68.2% WR, $21,320, PF 1.78, Sharpe 2.59 |
+| **OOS (sans filtre)** | PF 1.38, WF 4/5 |
 
 ## Tech Stack
 - **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy, filterpy, optuna

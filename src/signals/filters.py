@@ -5,6 +5,7 @@ from datetime import time
 
 import numpy as np
 import pandas as pd
+from numba import njit
 
 from src.utils.time_utils import SessionConfig
 
@@ -109,11 +110,40 @@ def _score_halflife(hl: float, cfg: ConfidenceConfig) -> float:
     return float((cfg.hl_max - hl) / (cfg.hl_max - cfg.hl_sweet_high))
 
 
+# ---------------------------------------------------------------------------
+# Vectorized confidence scoring (numpy, ~250x faster than loop)
+# ---------------------------------------------------------------------------
+
+def _score_halflife_vec(hl: np.ndarray, hl_min: float, hl_max: float,
+                        sweet_low: float, sweet_high: float) -> np.ndarray:
+    """Vectorized half-life scoring: trapezoid shape."""
+    score = np.zeros_like(hl)
+    valid = ~np.isnan(hl) & (hl >= hl_min) & (hl <= hl_max)
+
+    # Sweet spot
+    in_sweet = valid & (hl >= sweet_low) & (hl <= sweet_high)
+    score[in_sweet] = 1.0
+
+    # Below sweet spot
+    below = valid & (hl < sweet_low) & (hl >= hl_min)
+    denom_lo = sweet_low - hl_min
+    if denom_lo > 0:
+        score[below] = (hl[below] - hl_min) / denom_lo
+
+    # Above sweet spot
+    above = valid & (hl > sweet_high) & (hl <= hl_max)
+    denom_hi = hl_max - sweet_high
+    if denom_hi > 0:
+        score[above] = (hl_max - hl[above]) / denom_hi
+
+    return score
+
+
 def compute_confidence(
     metrics: pd.DataFrame,
     config: ConfidenceConfig,
 ) -> pd.Series:
-    """Compute confidence score (0-100%) for each bar.
+    """Compute confidence score (0-100%) for each bar — vectorized.
 
     Parameters
     ----------
@@ -126,32 +156,54 @@ def compute_confidence(
     pd.Series of float (0-100), indexed like metrics.
     """
     n = len(metrics)
-    confidence = np.zeros(n)
 
     adf = metrics["adf_stat"].values if "adf_stat" in metrics.columns else np.full(n, np.nan)
     hurst = metrics["hurst"].values if "hurst" in metrics.columns else np.full(n, np.nan)
     corr = metrics["correlation"].values if "correlation" in metrics.columns else np.full(n, np.nan)
     hl = metrics["half_life"].values if "half_life" in metrics.columns else np.full(n, np.nan)
 
-    for i in range(n):
-        # Gate: ADF must pass
-        if np.isnan(adf[i]) or adf[i] >= config.adf_gate:
-            confidence[i] = 0.0
-            continue
+    # ADF gate: NaN or >= gate → confidence = 0
+    gate_fail = np.isnan(adf) | (adf >= config.adf_gate)
 
-        s_adf = _score_linear(adf[i], config.adf_worst, config.adf_best)
-        s_hurst = _score_linear(hurst[i], config.hurst_worst, config.hurst_best)
-        s_corr = _score_linear(corr[i], config.corr_worst, config.corr_best)
-        s_hl = _score_halflife(hl[i], config)
+    # Linear scores (vectorized)
+    adf_span = config.adf_best - config.adf_worst
+    s_adf = np.clip((adf - config.adf_worst) / adf_span, 0.0, 1.0) if abs(adf_span) > 1e-12 else np.zeros(n)
+    s_adf[np.isnan(adf)] = 0.0
 
-        confidence[i] = (
-            config.w_adf * s_adf
-            + config.w_hurst * s_hurst
-            + config.w_corr * s_corr
-            + config.w_hl * s_hl
-        ) * 100.0
+    hurst_span = config.hurst_best - config.hurst_worst
+    s_hurst = np.clip((hurst - config.hurst_worst) / hurst_span, 0.0, 1.0) if abs(hurst_span) > 1e-12 else np.zeros(n)
+    s_hurst[np.isnan(hurst)] = 0.0
+
+    corr_span = config.corr_best - config.corr_worst
+    s_corr = np.clip((corr - config.corr_worst) / corr_span, 0.0, 1.0) if abs(corr_span) > 1e-12 else np.zeros(n)
+    s_corr[np.isnan(corr)] = 0.0
+
+    s_hl = _score_halflife_vec(hl, config.hl_min, config.hl_max, config.hl_sweet_low, config.hl_sweet_high)
+
+    # Weighted sum
+    confidence = (config.w_adf * s_adf + config.w_hurst * s_hurst
+                  + config.w_corr * s_corr + config.w_hl * s_hl) * 100.0
+    confidence[gate_fail] = 0.0
 
     return pd.Series(confidence, index=metrics.index, name="confidence")
+
+
+# ---------------------------------------------------------------------------
+# Numba-compiled confidence filter (entry blocker)
+# ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def _apply_conf_filter_numba(sig: np.ndarray, confidence: np.ndarray,
+                              min_conf: float) -> np.ndarray:
+    """Block new entries where confidence < min_conf. Never blocks exits."""
+    out = sig.copy()
+    prev = 0
+    for t in range(len(out)):
+        curr = out[t]
+        if prev == 0 and curr != 0 and confidence[t] < min_conf:
+            out[t] = 0
+        prev = out[t]
+    return out
 
 
 def apply_confidence_filter(
@@ -179,19 +231,73 @@ def apply_confidence_filter(
         config = ConfidenceConfig()
 
     confidence = compute_confidence(metrics, config)
-    sig = signals.values.copy()
-    prev = 0
-
-    for t in range(len(sig)):
-        current = sig[t]
-        is_entry = (prev == 0) and (current != 0)
-
-        if is_entry and confidence.iloc[t] < config.min_confidence:
-            sig[t] = 0
-
-        prev = sig[t]
-
+    sig = _apply_conf_filter_numba(
+        signals.values.astype(np.int8),
+        confidence.values,
+        config.min_confidence,
+    )
     return pd.Series(sig, index=signals.index, name="signal")
+
+
+# ---------------------------------------------------------------------------
+# Numba-compiled time stop filter
+# ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def apply_time_stop(sig: np.ndarray, max_bars: int) -> np.ndarray:
+    """Force exit after max_bars in position. max_bars=0 means no limit.
+
+    After forced exit, stays flat until the original signal naturally returns to 0
+    (prevents immediate re-entry on the same signal block).
+    """
+    if max_bars <= 0:
+        return sig
+    out = sig.copy()
+    bars_in_pos = 0
+    forced_flat = False
+    for t in range(len(out)):
+        if out[t] != 0:
+            if forced_flat:
+                out[t] = 0
+            else:
+                bars_in_pos += 1
+                if bars_in_pos > max_bars:
+                    out[t] = 0
+                    forced_flat = True
+        else:
+            bars_in_pos = 0
+            forced_flat = False
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Numba-compiled entry window + flat EOD filter (for grid search)
+# ---------------------------------------------------------------------------
+
+@njit(cache=True)
+def apply_window_filter_numba(sig: np.ndarray, minutes: np.ndarray,
+                               entry_start_min: int, entry_end_min: int,
+                               flat_min: int) -> np.ndarray:
+    """Apply entry window + flat EOD on numpy arrays (numba-compiled)."""
+    out = sig.copy()
+    prev = 0
+    for t in range(len(out)):
+        m = minutes[t]
+        curr = out[t]
+
+        # Force flat at/after flat_time or before entry_start
+        if m >= flat_min or m < entry_start_min:
+            out[t] = 0
+            prev = 0
+            continue
+
+        # Block new entries outside [entry_start, entry_end)
+        if not (entry_start_min <= m < entry_end_min):
+            if prev == 0 and curr != 0:
+                out[t] = 0
+
+        prev = out[t]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +337,11 @@ def apply_trading_window_filter(
     signals: pd.Series,
     session: SessionConfig | None = None,
 ) -> pd.Series:
-    """Force signals to 0 outside the trading window [trading_start, trading_end)."""
+    """Force signals to 0 outside the trading window [trading_start, trading_end).
+
+    Legacy behavior: blocks entries AND force-closes outside the window.
+    For separate entry/flat control, use apply_entry_flat_filter().
+    """
     if session is None:
         session = SessionConfig()
 
@@ -242,3 +352,51 @@ def apply_trading_window_filter(
     sig = signals.copy()
     sig[~in_window] = 0
     return sig
+
+
+def apply_entry_flat_filter(
+    signals: pd.Series,
+    entry_start: time = time(4, 0),
+    entry_end: time = time(14, 0),
+    flat_time: time = time(15, 30),
+) -> pd.Series:
+    """Block new entries outside [entry_start, entry_end), force flat at flat_time.
+
+    Positions opened before entry_end can ride until flat_time.
+    At flat_time, all positions are force-closed (signal -> 0).
+
+    Parameters
+    ----------
+    signals : pd.Series
+        Signal array {+1, 0, -1}.
+    entry_start : time
+        Earliest time for new entries (default 04:00 CT).
+    entry_end : time
+        Latest time for new entries (default 14:00 CT).
+    flat_time : time
+        Force all positions flat at this time (default 15:30 CT).
+    """
+    sig = signals.values.copy()
+    idx = signals.index
+    prev = 0
+
+    for t in range(len(sig)):
+        ts_time = idx[t].time()
+        curr = sig[t]
+
+        # Force flat at/after flat_time (and before next day entry_start)
+        if ts_time >= flat_time or ts_time < entry_start:
+            sig[t] = 0
+            prev = 0
+            continue
+
+        # Block new entries outside entry window
+        if not (entry_start <= ts_time < entry_end):
+            # Outside entry window but before flat_time: allow existing positions to ride
+            is_entry = (prev == 0) and (curr != 0)
+            if is_entry:
+                sig[t] = 0
+
+        prev = sig[t]
+
+    return pd.Series(sig, index=signals.index, name="signal")

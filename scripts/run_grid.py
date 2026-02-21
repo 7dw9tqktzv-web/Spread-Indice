@@ -6,12 +6,9 @@ Usage:
 """
 
 import argparse
-import csv
-import json
 import logging
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -23,12 +20,11 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backtest.engine import BacktestConfig, BacktestEngine, InstrumentSpec
-from src.backtest.performance import compute_performance
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.filters import ConfidenceConfig, apply_confidence_filter, apply_trading_window_filter
+from src.signals.filters import ConfidenceConfig, compute_confidence
 from src.signals.generator import SignalConfig, SignalGenerator
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
@@ -88,145 +84,162 @@ def load_session():
     return parse_session_config(cfg["session"])
 
 
-def build_spec(instruments, name):
-    s = instruments[name]
-    return InstrumentSpec(multiplier=s["multiplier"], tick_size=s["tick_size"], tick_value=s["tick_value"])
-
-
 # ──────────────────────────────────────────────────────────────────────
-# Phase 1: Pre-compute metrics (slow, parallelized)
+# Full job: metrics + signal + backtest (all in one worker)
 # ──────────────────────────────────────────────────────────────────────
 
 @dataclass
-class MetricJob:
+class GridJob:
     pair_name: str
     leg_a: str
     leg_b: str
     ols_window: int
     profile_name: str
+    mult_a: float
+    mult_b: float
+    tick_a: float
+    tick_b: float
+    session_start_min: int  # trading window as minutes for vectorized filter
+    session_end_min: int
 
 
-def compute_metric_job(job: MetricJob) -> dict:
-    """Compute hedge + metrics for one (pair, ols_window, profile) combo.
-    Returns dict with all intermediate data needed for signal loop."""
+def run_full_job(job: GridJob) -> list[dict]:
+    """Run hedge + metrics + all signal/backtest combos in a single worker.
+    Returns list of summary dicts (small, no DataFrames serialized)."""
     try:
         pair = SpreadPair(leg_a=Instrument(job.leg_a), leg_b=Instrument(job.leg_b))
         aligned = load_aligned_pair_cache(pair, "5min")
         if aligned is None:
-            return {"error": f"No cache for {job.pair_name}", "job": job}
+            return [{"error": f"No cache for {job.pair_name}"}]
 
-        close_a = aligned.df["close_a"]
-        close_b = aligned.df["close_b"]
+        px_a = aligned.df["close_a"].values
+        px_b = aligned.df["close_b"].values
+        idx = aligned.df.index
+        n = len(px_a)
 
-        # Compute hedge ONCE (beta/spread don't depend on zscore_window)
-        est_base = create_estimator("ols_rolling", window=job.ols_window, zscore_window=ZSCORE_WINDOWS[0])
-        hr_base = est_base.estimate(aligned)
-        beta = hr_base.beta
-        spread = hr_base.spread
+        # --- Hedge ratio (once per job) ---
+        est = create_estimator("ols_rolling", window=job.ols_window, zscore_window=ZSCORE_WINDOWS[0])
+        hr = est.estimate(aligned)
+        beta = hr.beta.values
+        spread = hr.spread
 
-        # Compute z-score for each zscore_window (reuse beta/spread)
-        hedge_results = {}
+        # --- Metrics (once per job) ---
+        profile_cfg = METRIC_PROFILES[job.profile_name]
+        metrics = compute_all_metrics(spread, aligned.df["close_a"], aligned.df["close_b"], profile_cfg)
+
+        # --- Confidence (once per job, then threshold per min_conf) ---
+        base_conf = ConfidenceConfig()
+        confidence = compute_confidence(metrics, base_conf).values
+
+        # --- Trading window mask (once per job, vectorized) ---
+        minutes = idx.hour * 60 + idx.minute
+        tw_mask = (minutes >= job.session_start_min) & (minutes < job.session_end_min)
+
+        # --- Z-scores for each window (once per job) ---
+        zscores = {}
         for zw in ZSCORE_WINDOWS:
             mu = spread.rolling(zw).mean()
             sigma = spread.rolling(zw).std()
             with np.errstate(divide="ignore", invalid="ignore"):
-                zscore = ((spread - mu) / sigma).replace([np.inf, -np.inf], np.nan)
-            hedge_results[zw] = {
-                "beta": beta,
-                "spread": spread,
-                "zscore": zscore,
-            }
+                zs = ((spread - mu) / sigma).replace([np.inf, -np.inf], np.nan).values
+            zscores[zw] = zs
 
-        # Metrics (depends only on ols_window + profile, computed once)
-        profile_cfg = METRIC_PROFILES[job.profile_name]
-        metrics = compute_all_metrics(spread, close_a, close_b, profile_cfg)
+        # --- Loop over signal combos ---
+        results = []
 
-        return {
-            "job": job,
-            "hedge_results": hedge_results,
-            "metrics": metrics,
-            "close_a": close_a,
-            "close_b": close_b,
-        }
+        for zw in ZSCORE_WINDOWS:
+            zscore = zscores[zw]
+
+            for z_entry, z_exit, z_stop in SIGNAL_COMBOS:
+                # Generate signals
+                sig_cfg = SignalConfig(z_entry=z_entry, z_exit=z_exit, z_stop=z_stop)
+                gen = SignalGenerator(config=sig_cfg)
+                raw_signals = gen.generate(pd.Series(zscore, index=idx)).values
+
+                for min_conf in MIN_CONFIDENCES:
+                    # Apply confidence filter (vectorized threshold)
+                    sig = raw_signals.copy()
+                    prev = 0
+                    for t in range(n):
+                        curr = sig[t]
+                        if (prev == 0) and (curr != 0) and (confidence[t] < min_conf):
+                            sig[t] = 0
+                        prev = sig[t]
+
+                    # Apply trading window (vectorized mask)
+                    sig[~tw_mask] = 0
+
+                    # Run vectorized backtest
+                    bt = run_backtest_vectorized(
+                        px_a, px_b, sig, beta,
+                        mult_a=job.mult_a, mult_b=job.mult_b,
+                        tick_a=job.tick_a, tick_b=job.tick_b,
+                        slippage_ticks=1, commission=2.50,
+                        initial_capital=100_000.0,
+                    )
+
+                    # Compute Sharpe/Calmar from equity
+                    eq = bt["equity"]
+                    sharpe = _compute_sharpe(eq)
+                    max_dd_pct = _compute_max_dd(eq)
+                    calmar = _compute_calmar(eq, max_dd_pct)
+
+                    results.append({
+                        "pair": job.pair_name,
+                        "ols_window": job.ols_window,
+                        "zscore_window": zw,
+                        "z_entry": z_entry,
+                        "z_exit": z_exit,
+                        "z_stop": z_stop,
+                        "min_confidence": min_conf,
+                        "profil": job.profile_name,
+                        "trades": bt["trades"],
+                        "win_rate": bt["win_rate"],
+                        "pnl": bt["pnl"],
+                        "profit_factor": bt["profit_factor"],
+                        "avg_pnl_trade": bt["avg_pnl_trade"],
+                        "sharpe": round(sharpe, 2),
+                        "calmar": round(calmar, 2),
+                        "max_dd_pct": round(max_dd_pct, 2),
+                        "max_dd_dollar": round(max_dd_pct * 1000, 2),
+                        "avg_duration_bars": bt["avg_duration_bars"],
+                        "max_duration_bars": bt["max_duration_bars"],
+                    })
+
+        return results
+
     except Exception as e:
-        return {"error": str(e), "job": job}
+        return [{"error": str(e), "pair": job.pair_name, "ols_window": job.ols_window}]
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Phase 2: Signal + backtest loop (fast, sequential per metric combo)
-# ──────────────────────────────────────────────────────────────────────
+def _compute_sharpe(eq: np.ndarray, bars_per_day: int = 264) -> float:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        returns = np.diff(eq) / eq[:-1]
+    returns = np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
+    if len(returns) < 2 or np.std(returns) == 0:
+        return 0.0
+    return float((np.mean(returns) / np.std(returns)) * np.sqrt(bars_per_day * 252))
 
-def run_signal_loop(metric_data: dict, session: SessionConfig, instruments: dict) -> list[dict]:
-    """Run all signal/confidence combos for one pre-computed metric result."""
-    job = metric_data["job"]
-    hedge_results = metric_data["hedge_results"]
-    metrics_df = metric_data["metrics"]
-    close_a = metric_data["close_a"]
-    close_b = metric_data["close_b"]
 
-    spec_a = build_spec(instruments, job.leg_a)
-    spec_b = build_spec(instruments, job.leg_b)
+def _compute_max_dd(eq: np.ndarray) -> float:
+    running_max = np.maximum.accumulate(eq)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dd = (running_max - eq) / running_max * 100
+    dd = np.nan_to_num(dd, nan=0.0)
+    return float(dd.max())
 
-    bt_config = BacktestConfig(
-        initial_capital=100_000.0,
-        commission_per_contract=2.50,
-        slippage_ticks=1,
-    )
-    engine = BacktestEngine(config=bt_config)
 
-    results = []
-
-    for zw in ZSCORE_WINDOWS:
-        hr = hedge_results[zw]
-        beta = hr["beta"]
-        zscore = hr["zscore"]
-
-        for z_entry, z_exit, z_stop in SIGNAL_COMBOS:
-            # Generate signals once per (zscore_window, signal_combo)
-            sig_cfg = SignalConfig(z_entry=z_entry, z_exit=z_exit, z_stop=z_stop)
-            gen = SignalGenerator(config=sig_cfg)
-            raw_signals = gen.generate(zscore)
-
-            for min_conf in MIN_CONFIDENCES:
-                conf_cfg = ConfidenceConfig(min_confidence=min_conf)
-                filtered = apply_confidence_filter(raw_signals, metrics_df, conf_cfg)
-                final = apply_trading_window_filter(filtered, session)
-
-                bt_result = engine.run(close_a, close_b, final, beta, spec_a, spec_b)
-                perf = compute_performance(bt_result)
-
-                # Trade durations
-                if bt_result.trades:
-                    durations = [(t.exit_bar - t.entry_bar) for t in bt_result.trades]
-                    avg_dur = np.mean(durations)
-                    max_dur = max(durations)
-                else:
-                    avg_dur = 0
-                    max_dur = 0
-
-                results.append({
-                    "pair": job.pair_name,
-                    "ols_window": job.ols_window,
-                    "zscore_window": zw,
-                    "z_entry": z_entry,
-                    "z_exit": z_exit,
-                    "z_stop": z_stop,
-                    "min_confidence": min_conf,
-                    "profil": job.profile_name,
-                    "trades": perf.num_trades,
-                    "win_rate": round(perf.win_rate, 1),
-                    "pnl": round(perf.total_pnl, 2),
-                    "profit_factor": round(perf.profit_factor, 2),
-                    "avg_pnl_trade": round(perf.avg_pnl_per_trade, 2),
-                    "sharpe": round(perf.sharpe_ratio, 2),
-                    "calmar": round(perf.calmar_ratio, 2),
-                    "max_dd_pct": round(perf.max_drawdown_pct, 2),
-                    "max_dd_dollar": round(perf.max_drawdown_pct * 1000, 2),  # 100k capital
-                    "avg_duration_bars": round(avg_dur, 1),
-                    "max_duration_bars": int(max_dur),
-                })
-
-    return results
+def _compute_calmar(eq: np.ndarray, max_dd_pct: float, bars_per_day: int = 264) -> float:
+    if max_dd_pct <= 0 or eq[0] == 0:
+        return 0.0
+    total_return = (eq[-1] - eq[0]) / eq[0]
+    n_bars = len(eq)
+    bars_per_year = bars_per_day * 252
+    with np.errstate(invalid="ignore"):
+        ann_return = (1 + total_return) ** (bars_per_year / max(n_bars, 1)) - 1
+    if np.isnan(ann_return) or np.isinf(ann_return):
+        return 0.0
+    return float(ann_return * 100 / max_dd_pct)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -239,18 +252,32 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show job count without running")
     args = parser.parse_args()
 
-    # Build metric jobs
+    instruments = load_instruments()
+    session = load_session()
+
+    # Precompute trading window as minutes
+    tw_start_min = session.trading_start.hour * 60 + session.trading_start.minute
+    tw_end_min = session.trading_end.hour * 60 + session.trading_end.minute
+
+    # Build jobs
     jobs = []
     for (leg_a, leg_b), ols_w, profile in product(PAIRS, OLS_WINDOWS, METRIC_PROFILES.keys()):
         pair_name = f"{leg_a}_{leg_b}"
-        jobs.append(MetricJob(pair_name=pair_name, leg_a=leg_a, leg_b=leg_b,
-                              ols_window=ols_w, profile_name=profile))
+        spec_a = instruments[leg_a]
+        spec_b = instruments[leg_b]
+        jobs.append(GridJob(
+            pair_name=pair_name, leg_a=leg_a, leg_b=leg_b,
+            ols_window=ols_w, profile_name=profile,
+            mult_a=spec_a["multiplier"], mult_b=spec_b["multiplier"],
+            tick_a=spec_a["tick_size"], tick_b=spec_b["tick_size"],
+            session_start_min=tw_start_min, session_end_min=tw_end_min,
+        ))
 
     signal_combos_per_job = len(ZSCORE_WINDOWS) * len(SIGNAL_COMBOS) * len(MIN_CONFIDENCES)
     total_backtests = len(jobs) * signal_combos_per_job
 
     log.info(f"Grid search OLS")
-    log.info(f"  Metric jobs: {len(jobs)} (parallel with {args.workers} workers)")
+    log.info(f"  Jobs: {len(jobs)} (parallel with {args.workers} workers)")
     log.info(f"  Signal combos per job: {signal_combos_per_job}")
     log.info(f"  Total backtests: {total_backtests:,}")
     log.info(f"  Pairs: {[f'{a}_{b}' for a,b in PAIRS]}")
@@ -264,52 +291,45 @@ def main():
         log.info("Dry run — exiting.")
         return
 
-    instruments = load_instruments()
-    session = load_session()
-
-    # Phase 1: parallel metric computation
-    log.info(f"[PHASE 1] Computing {len(jobs)} metric jobs with {args.workers} workers...")
     t0 = time.time()
-
     all_results = []
     completed = 0
     errors = 0
 
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(compute_metric_job, job): job for job in jobs}
+        futures = {executor.submit(run_full_job, job): job for job in jobs}
 
         for future in as_completed(futures):
             job = futures[future]
             completed += 1
 
             try:
-                metric_data = future.result()
+                results = future.result()
             except Exception as e:
                 errors += 1
-                log.error(f"[PHASE 1] {completed}/{len(jobs)} CRASH {job.pair_name} ols={job.ols_window} {job.profile_name}: {e}")
+                log.error(f"[{completed}/{len(jobs)}] CRASH {job.pair_name} ols={job.ols_window} {job.profile_name}: {e}")
                 continue
 
-            if "error" in metric_data:
+            if results and "error" in results[0]:
                 errors += 1
-                log.error(f"[PHASE 1] {completed}/{len(jobs)} ERROR {job.pair_name} ols={job.ols_window} {job.profile_name}: {metric_data['error']}")
+                log.error(f"[{completed}/{len(jobs)}] ERROR {job.pair_name}: {results[0]['error']}")
                 continue
 
-            # Phase 2: signal loop (fast, in main process)
-            results = run_signal_loop(metric_data, session, instruments)
             all_results.extend(results)
 
             elapsed = time.time() - t0
-            eta_remaining = (elapsed / completed) * (len(jobs) - completed) if completed > 0 else 0
+            eta = (elapsed / completed) * (len(jobs) - completed) if completed > 0 else 0
             log.info(
-                f"[PHASE 1] {completed}/{len(jobs)} done | "
-                f"{job.pair_name} ols={job.ols_window} {job.profile_name} | "
-                f"{len(results)} configs | "
-                f"elapsed={elapsed:.0f}s ETA={eta_remaining:.0f}s"
+                f"[{completed}/{len(jobs)}] {job.pair_name} ols={job.ols_window} {job.profile_name} | "
+                f"{len(results)} configs | elapsed={elapsed:.0f}s ETA={eta:.0f}s"
             )
+            sys.stdout.flush()
 
     phase1_time = time.time() - t0
-    log.info(f"[PHASE 1] Complete: {completed}/{len(jobs)} jobs, {errors} errors, {phase1_time:.0f}s")
-    log.info(f"[PHASE 1] Total results: {len(all_results):,}")
+    log.info(f"Complete: {completed}/{len(jobs)} jobs, {errors} errors, {phase1_time:.0f}s")
+    log.info(f"Total results: {len(all_results):,}")
 
     # Save raw CSV
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -319,8 +339,6 @@ def main():
         df = pd.DataFrame(all_results)
         df.to_csv(csv_path, index=False)
         log.info(f"[OUTPUT] Raw results -> {csv_path} ({len(df):,} rows)")
-
-        # Apply filters and generate reports
         generate_reports(df)
     else:
         log.warning("No results to save!")
@@ -336,7 +354,6 @@ def main():
 def generate_reports(df: pd.DataFrame):
     """Generate filtered reports and top-10 rankings."""
 
-    # Filter: trades > 100, pnl > 0, avg_pnl_trade > 30
     filtered = df[(df["trades"] > 100) & (df["pnl"] > 0) & (df["avg_pnl_trade"] > 30)].copy()
     log.info(f"[REPORT] Filtered: {len(filtered):,} / {len(df):,} configs pass (trades>100, pnl>0, avg>$30)")
 
@@ -346,10 +363,9 @@ def generate_reports(df: pd.DataFrame):
         log.info(f"[REPORT] Relaxed filter: {len(filtered):,} configs")
 
     if len(filtered) == 0:
-        log.warning("[REPORT] Still no configs pass. Showing top 10 by PnL regardless.")
+        log.warning("[REPORT] Still no configs pass. Showing top 20 by PnL regardless.")
         filtered = df.nlargest(20, "pnl").copy()
 
-    # Deduplicate by pattern: group by (pair, ols_window, zscore_window, z_entry) and keep best min_confidence
     def dedup_top(subset, sort_col, ascending=False, n=10):
         sorted_df = subset.sort_values(sort_col, ascending=ascending)
         seen = set()
@@ -363,18 +379,15 @@ def generate_reports(df: pd.DataFrame):
                     break
         return pd.DataFrame(top)
 
-    # Normalize helper
     def norm(series):
         mn, mx = series.min(), series.max()
         if mx - mn < 1e-9:
             return pd.Series(0.5, index=series.index)
         return (series - mn) / (mx - mn)
 
-    # Scoring columns
     if len(filtered) > 0:
         f = filtered.copy()
 
-        # Équilibré score
         f["score_equilibre"] = (
             0.30 * norm(f["sharpe"])
             + 0.25 * norm(f["profit_factor"])
@@ -383,8 +396,7 @@ def generate_reports(df: pd.DataFrame):
             + 0.10 * norm(f["trades"])
         )
 
-        # Propfirm score
-        trading_days = 5 * 252  # ~5 years
+        trading_days = 5 * 252
         f["daily_pnl"] = f["pnl"] / trading_days
         f["score_daily"] = (f["daily_pnl"] / 300).clip(0, 1)
         f["score_dd"] = (1 - f["max_dd_dollar"] / 5000).clip(0, 1)
@@ -399,7 +411,6 @@ def generate_reports(df: pd.DataFrame):
 
         filtered = f
 
-    # Print rankings
     rankings = [
         ("TOP 10 PNL", "pnl", False),
         ("TOP 10 SHARPE", "sharpe", False),
@@ -427,7 +438,6 @@ def generate_reports(df: pd.DataFrame):
                 f"{r['max_dd_pct']:>5.1f} {r['avg_duration_bars']:>5.0f}"
             )
 
-    # Best config per pair
     log.info(f"\n{'='*90}")
     log.info(f" BEST CONFIG PER PAIR (by Sharpe)")
     log.info(f"{'='*90}")
@@ -446,7 +456,6 @@ def generate_reports(df: pd.DataFrame):
             f"DD={best['max_dd_pct']:.1f}%"
         )
 
-    # Save filtered CSV
     csv_path = OUTPUT_DIR / "grid_results_ols_filtered.csv"
     filtered.to_csv(csv_path, index=False)
     log.info(f"\n[OUTPUT] Filtered results -> {csv_path} ({len(filtered):,} rows)")
