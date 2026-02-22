@@ -10,8 +10,11 @@ Spread:   S(t) = ln(P_a) - β(t) × ln(P_b)  (residual after update)
 Features:
     - Log-prices (consistent with OLS)
     - R estimated from OLS residual variance on first `warmup` bars
+    - Optional adaptive R via EWMA on squared innovations (r_ewma_span > 0)
+    - Optional adaptive Q that tracks R changes (adaptive_Q=True)
     - P enlarged at session boundaries (overnight gap handling)
     - Joseph form for numerical stability
+    - Diagnostics: P_trace(t), K_beta(t), R_history(t)
 """
 
 from dataclasses import dataclass
@@ -29,6 +32,8 @@ class KalmanConfig:
     alpha_ratio: float = 1e-5
     warmup: int = 100
     gap_P_multiplier: float = 10.0
+    r_ewma_span: int = 0        # 0 = fixed R (current behavior), >0 = EWMA span in bars
+    adaptive_Q: bool = False     # True = Q tracks R changes, False = Q fixed on initial R
 
 
 def _detect_session_starts(index: pd.DatetimeIndex) -> np.ndarray:
@@ -63,6 +68,8 @@ class KalmanEstimator(HedgeRatioEstimator):
         self.alpha_ratio = self.config.alpha_ratio
         self.warmup = self.config.warmup
         self.gap_P_multiplier = self.config.gap_P_multiplier
+        self.r_ewma_span = self.config.r_ewma_span
+        self.adaptive_Q = self.config.adaptive_Q
 
     def estimate(self, aligned: AlignedPair) -> HedgeResult:
         log_a = np.log(aligned.df["close_a"].values)
@@ -92,11 +99,22 @@ class KalmanEstimator(HedgeRatioEstimator):
         # --- Kalman filter ---
         theta = np.array([0.0, 1.0])  # [alpha, beta]
         P = np.eye(2)
-        Q = np.eye(2) * self.alpha_ratio * R  # scale-aware: Q proportional to R
+        R_init = R
+        q_scalar = self.alpha_ratio * R  # Q = q_scalar * I (scalar, not matrix)
+
+        # Adaptive R via EWMA on squared innovations
+        r_adaptive = self.r_ewma_span > 0
+        r_lambda = 1.0 - 2.0 / (self.r_ewma_span + 1) if r_adaptive else 0.0
 
         betas = np.empty(n)
         spreads = np.empty(n)
         zscores = np.empty(n)
+        # Diagnostics arrays (P2: zero-cost, already computed)
+        p_traces = np.empty(n)
+        k_betas = np.empty(n)
+        r_values = np.empty(n)
+
+        I2 = np.eye(2)  # pre-allocated identity
 
         for t in range(n):
             # --- Reset P at session boundaries ---
@@ -106,12 +124,22 @@ class KalmanEstimator(HedgeRatioEstimator):
             H = np.array([1.0, log_b[t]])
 
             # --- Predict ---
-            P = P + Q
+            P[0, 0] += q_scalar
+            P[1, 1] += q_scalar
 
             # --- Innovation ---
             y_pred = H @ theta
             nu = log_a[t] - y_pred
             F = H @ P @ H + R
+
+            # --- Adaptive R (P1: EWMA on squared innovations) ---
+            if r_adaptive:
+                R = r_lambda * R + (1.0 - r_lambda) * nu * nu
+                if R < 1e-8:
+                    R = 1e-8
+                # Adaptive Q: q_scalar tracks R if enabled
+                if self.adaptive_Q:
+                    q_scalar = self.alpha_ratio * R
 
             # --- Z-score (innovation-based) ---
             zscores[t] = nu / np.sqrt(F) if F > 0 else 0.0
@@ -119,16 +147,23 @@ class KalmanEstimator(HedgeRatioEstimator):
             # --- Update (Joseph form) ---
             K = P @ H / F
             theta = theta + K * nu
-            I_KH = np.eye(2) - np.outer(K, H)
+            I_KH = I2 - np.outer(K, H)
             P = I_KH @ P @ I_KH.T + np.outer(K, K) * R
 
             betas[t] = theta[1]
             spreads[t] = log_a[t] - theta[1] * log_b[t]
 
+            # --- Diagnostics (P2: store what we already computed) ---
+            p_traces[t] = P[0, 0] + P[1, 1]
+            k_betas[t] = K[1]
+            r_values[t] = R
+
         # Warm-up: mask first N bars
         betas[:self.warmup] = np.nan
         spreads[:self.warmup] = np.nan
         zscores[:self.warmup] = np.nan
+        p_traces[:self.warmup] = np.nan
+        k_betas[:self.warmup] = np.nan
 
         beta_s = pd.Series(betas, index=idx, name="beta")
         spread_s = pd.Series(spreads, index=idx, name="spread")
@@ -141,8 +176,16 @@ class KalmanEstimator(HedgeRatioEstimator):
             method="kalman",
             params={
                 "alpha_ratio": self.alpha_ratio,
-                "R_estimated": R,
+                "R_init": R_init,
+                "R_final": R,
                 "warmup": self.warmup,
                 "gap_P_multiplier": self.gap_P_multiplier,
+                "r_ewma_span": self.r_ewma_span,
+                "adaptive_Q": self.adaptive_Q,
+            },
+            diagnostics={
+                "P_trace": pd.Series(p_traces, index=idx, name="P_trace"),
+                "K_beta": pd.Series(k_betas, index=idx, name="K_beta"),
+                "R_history": pd.Series(r_values, index=idx, name="R_history"),
             },
         )

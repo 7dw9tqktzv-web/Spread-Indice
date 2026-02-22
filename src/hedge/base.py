@@ -19,7 +19,8 @@ class HedgeResult:
     spread: pd.Series        # S(t) = log_a - β(t) × log_b
     zscore: pd.Series        # z-score of the spread
     method: str              # hedge method name
-    params: dict = field(default_factory=dict)  # parameters used
+    params: dict = field(default_factory=dict)       # parameters used
+    diagnostics: dict = field(default_factory=dict)  # optional time series (P_trace, K_beta, R_history)
 
 
 class HedgeRatioEstimator(ABC):

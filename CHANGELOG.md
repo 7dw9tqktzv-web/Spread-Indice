@@ -506,3 +506,123 @@ Objectif : evaluer si le filtre de Kalman apporte une information complementaire
 6. **Decision** : Kalman en textbox Sierra (beta + z-score + direction). Pas de signaux automatiques.
    - E-mini : pour compte perso (MaxDD $18k acceptable)
    - Micro x2 : pour propfirm eval (MaxDD < $4,500)
+
+---
+
+## Phase 8 — Optimisation Kalman (Insights VIX) — 2026-02-22
+
+Objectif : extraire et tester les ameliorations du filtre de Kalman issues d'un document d'analyse VIX (modele Ornstein-Uhlenbeck). Plan en 6 priorites (P1-P6), test sequentiel avec validation avant chaque etape.
+
+### Implementation : P1 (R adaptatif EWMA) + P2 (Diagnostics P_trace/K_beta)
+
+**Code modifie** :
+- `src/hedge/kalman.py` : ajout `r_ewma_span`, `adaptive_Q` dans `KalmanConfig` + boucle R(t) = lambda*R(t-1) + (1-lambda)*nu^2 + stockage P_trace/K_beta/R_history dans diagnostics
+- `src/hedge/base.py` : ajout `diagnostics: dict` dans `HedgeResult`
+- `tests/test_hedge/test_kalman.py` : +13 tests (non-regression, convergence R, diagnostics, adaptive_Q)
+- **Total tests** : 62 (49 originaux + 13 nouveaux)
+
+### Test 8.1 — P1 : R adaptatif EWMA (55 backtests)
+
+**Script** : `scripts/test_adaptive_r.py`
+- **Configs testees** : 5 top Kalman (K_Sniper, K_BestPnL, K_Balanced, K_Quality, K_ShortWin)
+- **R combos** : r_ewma_span = [0, 200, 500, 1000, 2000, 5000] x adaptive_Q = [False, True]
+- **Baseline** : r_ewma_span=0 (R fixe, comportement champion actuel)
+
+#### Resultats :
+
+| Config | Baseline MaxDD | Pire EWMA MaxDD | Degradation | R ratio max |
+|--------|---------------|-----------------|-------------|-------------|
+| K_Sniper | -$10,995 | -$27,645 | 2.5x | 98,713x (EWMA=200) |
+| K_BestPnL | -$19,155 | -$42,455 | 2.2x | 98,713x |
+| K_Balanced | -$19,155 | -$131,335 | 6.9x | 98,713x |
+| K_Quality | -$19,155 | -$90,170 | 4.7x | 98,713x |
+| K_ShortWin | -$19,155 | -$84,805 | 4.4x | 98,713x |
+
+**VERDICT : P1 INVALIDE** — R adaptatif degrade le MaxDD de 2x a 7x sur TOUTES les configs, TOUS les spans.
+
+**Mecanisme identifie** : EWMA(nu^2) capture bruit + signal. Quand le spread devie legitimement, R augmente → filtre anesthesie (plus confiance au modele vs observations) → beta ne s'adapte plus → z-score decolle → cascade de pertes. Le R ratio atteint 98,713x (EWMA=200), soit 5 ordres de magnitude d'oscillation.
+
+**Difference cle avec le papier VIX** : Le VIX est directement observe (1 variable d'etat). Notre Kalman estime [alpha, beta] a partir de log-prix — les innovations ne refletent PAS directement le bruit de mesure. EWMA sur nu^2 melange inadaptation du modele et bruit reel.
+
+**Decision** : r_ewma_span reste dans le code (defaut=0 = desactive, non-regression OK). Ne JAMAIS activer sur cette strategie.
+
+### Test 8.2 — P2 : Diagnostics P_trace/K_beta + Analyse Spearman
+
+**Script** : `scripts/analyze_kalman_diagnostics.py`
+
+#### Phase 1 — Spearman global :
+
+| Config | Rho (P_trace vs PnL) | p-value | Significant? |
+|--------|----------------------|---------|--------------|
+| K_Sniper | -0.151 | 0.172 | Non |
+| K_BestPnL | -0.206 | 0.001 | Oui |
+| K_Balanced | -0.187 | 0.004 | Oui |
+| K_Quality | -0.151 | 0.020 | Oui |
+| K_ShortWin | -0.146 | 0.025 | Oui |
+
+Signal apparent : rho negatif = P_trace eleve → PnL plus faible.
+
+#### Phase 2 — Deconfounding (identification du biais temporel) :
+
+**Probleme** : P_trace diminue monotoniquement avec le temps (convergence Kalman). Les annees recentes performent mieux. Le Spearman global capture potentiellement time→P_trace ET time→performance, PAS P_trace→performance.
+
+| Mesure | K_Balanced | K_Sniper |
+|--------|------------|----------|
+| Rho global (P_trace vs PnL) | -0.187 | -0.151 |
+| Rho (Time vs P_trace) | **-1.000** | **-1.000** |
+| Rho intra-annee moyen | -0.121 | **+0.037** |
+| Rho partiel (ctrl. time) | NaN (P_trace = f(time)) | NaN |
+| Annees significatives | 0/6 | 0/6 |
+
+**VERDICT : P3 INVALIDE** — P_trace est un pur proxy temporel (rho = -1.000 avec le temps). Signal intra-annee trop faible (rho ~-0.12, aucune annee individuellement significative). Un filtre P_trace serait un "filtre temporel deguise" — inutile en walk-forward ou le Kalman redemarre a chaque fenetre.
+
+**Decision** : P_trace et K_beta restent dans les diagnostics (cout zero, visualisation utile). P3 (filtre P_trace) abandonne. P4 (z-score OU) deprioritise.
+
+### Test 8.3 — Autopsie 2023 (10 dimensions, 5 configs Kalman + OLS)
+
+**Script** : `scripts/analyze_2023_losses.py`
+
+2023 est la SEULE annee negative pour les 5 configs Kalman. Autopsie exhaustive :
+
+#### Resultats K_Balanced 2023 :
+
+| Dimension | Finding |
+|-----------|---------|
+| 1. Taille | 45 trades, 32 W ($20,435) vs 13 L ($-26,135) = **-$5,700** |
+| 2. Type sortie | **FLAT = le tueur** : 9 trades, **-$19,440 (86% des pertes)** |
+| 3. Side | Short detruit : **-$6,630** (NQ +38.2% vs YM +8.9%, tech rally) |
+| 4. Heure | 5h-8h = zone de perte (pre-ouverture US) |
+| 5. Jour | Mercredi catastrophique : 4 trades, 25% WR, **-$10,465** |
+| 6. Duree | Perdants durent 18.5 barres (1h30) vs gagnants 11.8 barres (1h) |
+| 7. Spread regime | Drift **+29.2%** (plus haut en 6 ans), corr **0.664** (plus basse), std **0.071** (plus haute), ACF(1) = **0.000** (zero mean reversion!) |
+| 8. Confidence | **INVERSEE** : perdants confidence 51.6% > gagnants 45.8% |
+| 9. Yearly comparison | 2023 = anomalie sur TOUTES les metriques (drift, corr, vol, ACF) |
+| 10. OLS overlay | Kalman -$5,700 + OLS +$5,860 = **+$160 (break-even)**. Mais 0/11 jours de perte Kalman compenses par OLS |
+
+#### Root cause 2023 :
+
+Le regime macro 2023 (tech rally NQ +38.2% vs value YM +8.9%) a detruit la cointegration :
+- Spread drift historique (+29.2%)
+- Correlation a son minimum (0.664)
+- Volatilite a son maximum (0.071)
+- **Zero mean reversion** (ACF1 = 0.000)
+- Le confidence scoring est AVEUGLE a ce regime (metriques bar-by-bar, pas de detection de tendance daily)
+- Les FLAT exits (force-close 15:30) representent 86% des pertes : le spread diverge, ne revient jamais, position tenue jusqu'a la fermeture forcee
+
+#### Complementarite OLS/Kalman en 2023 :
+- 17% de chevauchement de jours de trading (vs 2% global)
+- OLS compense au niveau annuel (+$5,860 vs Kalman -$5,700)
+- Mais PAS au niveau trade : sur les 11 jours de perte Kalman, OLS ne compense aucun (0/11)
+- La complementarite est structurelle (mecanismes differents) mais pas synchrone
+
+### Implications pour Phase 2 (Sierra Charts) :
+
+1. **Overlay discretionnaire** : afficher les metriques de regime (corr rolling, spread drift, ACF) pour que le trader detecte les periodes type 2023
+2. **Gestion FLAT** : le trailing stop ou un stop PnL intraday limiterait les pertes de FLAT exit ($19k → cible $5k)
+3. **Biais directionnel** : en tech rally, le cote short du spread est structurellement perdant — le discretionnaire doit le filtrer
+4. **Confidence scoring** : a completer par un indicateur de regime daily (trend vs mean-reversion) — le scoring actuel est bar-by-bar et aveugle aux trends multi-jours
+
+### Scripts ajoutes Phase 8 :
+- `scripts/test_adaptive_r.py` — Test P1 R adaptatif (55 backtests)
+- `scripts/analyze_kalman_diagnostics.py` — Analyse P2 + deconfounding P_trace
+- `scripts/analyze_2023_losses.py` — Autopsie 2023 (10 dimensions)

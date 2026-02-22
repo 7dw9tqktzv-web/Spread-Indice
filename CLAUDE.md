@@ -7,7 +7,7 @@ Système de spread trading intraday sur futures US (NQ, ES, RTY, YM).
 - **Phase 1** : Moteur de backtest Python (optimisation & validation)
 - **Phase 2** : Indicateur Sierra Charts temps réel (ACSIL C++)
 
-Le biais directionnel journalier est discrétionnaire — le système time l'entrée avec précision statistique sur des billets macroéconomiques. Voir `ARCHITECTURE.md` pour le design détaillé.
+Le biais directionnel journalier est discrétionnaire — le système time l'entrée avec précision statistique sur des billets macroéconomiques. Voir `ARCHITECTURE.md` pour le design détaillé (note : certaines signatures de classe dans ARCHITECTURE.md sont stales — e.g. `fit()` vs `estimate()`. **CLAUDE.md est la source de verite** pour l'etat actuel du code).
 
 ## Commands
 
@@ -42,14 +42,47 @@ python scripts/run_backtest.py --pair NQ_ES --method ols_rolling --z-entry 2.5 -
 # Grid search (43,200 backtests, 6 pairs × all param combos)
 python scripts/run_grid.py --workers 20
 python scripts/run_grid.py --workers 20 --dry-run  # show counts only
+
+# Refined grid OLS (1,080,000 combos, NQ_YM only)
+python scripts/run_refined_grid.py --workers 5
+
+# Grid search Kalman (1,009,800 combos)
+python scripts/run_grid_kalman_v3.py --workers 10
+
+# Validation pipelines
+python scripts/validate_kalman_top.py      # Kalman IS/OOS + WF validation
+python scripts/validate_top5_configs.py    # Full OLS validation pipeline
+python scripts/validate_confidence.py      # Original quant validation
+python scripts/validate_numba.py           # Numba vs Python parity
+
+# Analysis
+python scripts/analyze_grid_results.py     # Deep analysis (rankings, hourly, sensitivity)
+python scripts/analyze_filters.py          # Filter ablation NQ_YM
+python scripts/find_safe_kalman.py         # E-mini safe configs (MaxDD < $4,500)
+python scripts/find_safe_kalman_micro.py   # Micro contracts analysis (x1/x2/x3)
+python scripts/test_adaptive_r.py          # P1 R adaptatif (INVALIDE — reference)
+python scripts/analyze_kalman_diagnostics.py  # P2 diagnostics + deconfounding
+python scripts/analyze_2023_losses.py      # Autopsie 2023 (10 dimensions)
 ```
 
-**Important**: All scripts must be run from the project root (cache uses relative path `output/cache`).
+**Important**: All scripts must be run from the project root (cache uses relative path `output/cache`). Raw data (`raw/*.txt`, Sierra CSV exports) is gitignored — must be provided externally.
 
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator numba + filters numba + confidence filter + time stop + window filter), `src/backtest/` (engine bar-by-bar + vectorized + grid-optimized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, run_refined_grid.py, run_grid_kalman_v3.py, validate_kalman_top.py, find_safe_kalman.py, find_safe_kalman_micro.py, analyze_grid_results.py, validate_top5_configs.py, validate_numba.py), `tests/` (49 tests)
+- **Implemented**:
+  - `src/data/` — loader, cleaner, resampler, alignment, cache
+  - `src/hedge/` — OLS rolling + Kalman + factory dispatch
+  - `src/spread/` — SpreadPair dataclass
+  - `src/sizing/` — dollar-neutral position sizing + optimal multiplier
+  - `src/stats/` — vectorized hurst (variance-ratio), halflife, correlation, stationarity (2 ADF variants)
+  - `src/metrics/` — dashboard + confidence scoring
+  - `src/signals/` — generator (numba JIT 451x), filters (numba: confidence, time stop, window filter)
+  - `src/backtest/` — engine (bar-by-bar + vectorized + grid-optimized), performance
+  - `src/utils/` — time_utils, constants
+  - `config/` — 4 YAML configs
+  - `scripts/` — 15 scripts (backtest, grid search, validation, analysis, diagnostics)
+  - `tests/` — 62 tests (24 hedge + 9 signals/generator + 9 signals/filters + 8 backtest/engine + 12 sizing/stops)
 - **Stubs only**: `src/optimisation/`, `sierra/` (reference docs ready)
 - **Numba JIT**: signal generator (451x), confidence filter, time stop, window filter — all validated identical to Python originals
 
@@ -82,7 +115,7 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 
 5. **Imports**: `pyproject.toml` sets `pythonpath = ["."]` — all imports use `from src.xxx import yyy`.
 
-6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update. Alpha sweet spot for NQ_YM: 1.5e-7 to 3e-7. Warmup and gap_P_mult have negligible impact (Kalman converges fast). Innovation z-score is N(0,1) by construction — optimal z_entry=1.5-2.0, z_stop=2.5-2.8 (NOT the same as OLS z_entry=3.15, z_stop=4.5).
+6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update. Alpha sweet spot for NQ_YM: 1.5e-7 to 3e-7. Warmup and gap_P_mult have negligible impact (Kalman converges fast). Innovation z-score is N(0,1) by construction — optimal z_entry=1.5-2.0, z_stop=2.5-2.8 (NOT the same as OLS z_entry=3.15, z_stop=4.5). `HedgeResult.diagnostics` contains `P_trace`, `K_beta`, `R_history` Series (cost=0, always populated). `KalmanConfig.r_ewma_span` (default 0=off) and `adaptive_Q` (default False) exist but are INVALIDATED — never activate (MaxDD degrades 2-7x).
 
 7. **Two ADF implementations in `stationarity.py`**: `adf_rolling()` (statsmodels) and `adf_statistic_simple()` (custom, no augmentation) — the simple one is designed for Python/C++ parity testing.
 
@@ -103,6 +136,12 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 15. **Hurst uses variance-ratio** (not R/S). R/S gives biased ~0.99 on spread levels (cumsum-on-cumsum). Variance-ratio works on levels directly, gives H~0.41 median for NQ/ES. Vectorized via precomputed rolling std.
 
 16. **Half-life vectorized** via rolling covariance: `b = Cov(Z(t),Z(t-1)) / Var(Z(t-1))`, `HL = -ln(2)/ln(b)`. Instant vs 39s with per-bar lstsq.
+
+17. **R adaptatif INVALIDE** : EWMA sur innovations nu^2 melange bruit de mesure et inadaptation du modele. Sur un Kalman a 2 etats [alpha, beta], les innovations ne sont PAS du pur bruit de mesure (contrairement au VIX 1 etat). R oscille sur 5 ordres de magnitude → filtre destabilise → MaxDD 2-7x pire. Ne JAMAIS activer `r_ewma_span > 0`.
+
+18. **P_trace est un proxy temporel pur** : correlation Spearman P_trace vs temps = -1.000. P_trace diminue monotoniquement (convergence Kalman). Un filtre base sur P_trace serait un filtre temporel deguise — inutile en walk-forward ou Kalman redemarre.
+
+19. **2023 : seule annee negative Kalman** : NQ +38.2% vs YM +8.9% (tech rally) → spread drift +29.2%, correlation 0.664 (minimum), ACF(1) = 0.000 (zero mean reversion). FLAT exits = 86% des pertes (spread diverge, ne revient pas, position tenue jusqu'a force-close 15:30). Le confidence scoring est aveugle a ce regime daily. Implication Phase 2 : afficher indicateur de regime daily + gestion FLAT.
 
 ### Instruments & Pairs
 - **6 instruments** : NQ, ES, RTY, YM (standards) + MNQ, MYM (micros) — contrats continus, Volume Rollover Back-Adjusted
@@ -196,5 +235,5 @@ Solution : micro contracts (MNQ/MYM) a x2 = sweet spot propfirm (92.6% configs M
 | Micro x3 | $23,903 | -$5,748 | 3 | Limite |
 
 ## Tech Stack
-- **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy, filterpy, optuna
+- **Phase 1** : Python 3.11+, venv, pandas, numpy, numba, statsmodels, scipy, filterpy, optuna, pyarrow (cache)
 - **Phase 2** : C++ (ACSIL Sierra Charts API), header-only, online algorithms, no STL in hot path
