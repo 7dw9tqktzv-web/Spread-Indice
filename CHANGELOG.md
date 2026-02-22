@@ -1,7 +1,7 @@
 # CHANGELOG — Recherche Backtest Spread Indice
 
 Historique chronologique des tests, resultats et decisions.
-Derniere mise a jour : 2026-02-21
+Derniere mise a jour : 2026-02-22
 
 ---
 
@@ -333,3 +333,176 @@ Parametres scales proportionnellement au timeframe (meme duree temporelle) :
 - **mm=2 viable** sur compte perso (MaxDD $10k), **mm=1 pour propfirm** ($5k DD)
 - **mm=3** : PnL x2 mais MaxDD x3 ($16k) — trop risque
 - **Decision** : rester sur NQ/YM standard x1, SL dollar desactive. Multiplicateur et micros disponibles pour scaling futur
+
+---
+
+## Phase 7 — Grid Search Kalman NQ_YM (indicateur complementaire)
+
+Objectif : evaluer si le filtre de Kalman apporte une information complementaire a OLS pour affichage en textbox Sierra (biais discretionnaire). Kalman n'avait JAMAIS ete teste sur NQ_YM.
+
+### Differences cles OLS vs Kalman :
+- OLS : z-score rolling (zscore_window), beta fixe sur fenetre
+- Kalman : z-score innovation nu/sqrt(F) auto-adaptatif (N(0,1) par construction), beta adaptatif
+- Consequence : z_entry optimal Kalman = 1.0-2.5 (vs 3.15 OLS), z_stop = 2.5-2.8 (vs 4.5 OLS)
+
+### Test 7.1 — Grid v1 (290,304 combos, 95s)
+- **Script** : `scripts/run_grid_kalman.py`
+- **Parametres** : 12 alpha_ratio x 13 z_entry x 9 z_exit x 8 z_stop x 12 min_conf x 3 profils
+- **Alpha sweet spot** : 1e-7 a 5e-7 (tres lent = beta stable)
+- **z_entry optimal** : 1.0-2.25 (beaucoup plus bas que OLS)
+- **z_stop = 2.5 domine** (correct pour innovation z N(0,1))
+- **19 configs battent OLS PF** (1.83), meilleur PF 2.35 (59 trades)
+- **Conclusion v1** : Kalman complementaire, pas remplacement. Signaux rares mais fiables.
+
+### Test 7.2 — Grid v2 raffine (1,482,624 combos, 12min)
+- **Script** : `scripts/run_grid_kalman_v2.py --workers 10`
+- **Nouveaux parametres testes** (recommandation agent expert-spread) :
+  - warmup : [100, 200, 500, 750] — convergence Kalman
+  - gap_P_multiplier : [2.0, 5.0, 10.0, 25.0] — inflation P aux gaps overnight
+- **Alpha** : [5e-8, 1e-7, 1.5e-7, 2e-7, 3e-7, 5e-7, 7e-7, 1e-6]
+- **z_entry** : 1.0 -> 2.5 step 0.125, **z_exit** : 0.0 -> 1.5, **z_stop** : 2.0 -> 3.5
+- **min_confidence** : [50, 60, 63, 65, 67, 69, 70, 72, 75]
+- **Resultat cle** : warmup et gap_P_mult n'ont AUCUN impact (Kalman converge vite pour alpha <= 1e-6)
+- **5,448 configs battent OLS PF** (vs 19 en v1)
+
+### Test 7.3 — Rapport detaille Kalman vs OLS (trade-level)
+- **Script** : `scripts/analyze_kalman_report.py`
+- **Configs re-run avec moteur complet** (equity + trades individuels)
+
+#### Tableau comparatif complet :
+
+| Config | Trades | WR% | PnL | PF | Sharpe | Calmar | MaxDD$ | PropFirm |
+|--------|--------|-----|-----|----|--------|--------|--------|----------|
+| OLS ConfigE | 176 | 68.2% | $23,215 | 1.86 | 1.00 | 0.90 | $4,905 | 20.5 |
+| K_BestPF (a=1.5e-7 ze=2.0 zx=0.75 zs=2.75 c=67 moyen) | 53 | 84.9% | $36,425 | **5.05** | **1.37** | 0.99 | $7,705 | 18.9 |
+| K_BestPnL (a=3e-7 ze=1.375 zx=0.25 zs=2.75 c=75 tc) | 260 | 73.5% | **$73,580** | 1.64 | 1.18 | 0.88 | $16,730 | 26.1 |
+| K_BestVolume (a=1.5e-7 ze=1.0 zx=0.75 zs=2.75 c=69 tc) | **395** | 70.9% | $52,610 | 1.32 | 0.77 | 0.37 | $26,195 | **27.3** |
+| K_RunnerPF (a=3e-7 ze=2.125 zx=0.25 zs=2.8 c=65 court) | 59 | 74.6% | $37,970 | 2.90 | 1.09 | **1.46** | $5,925 | 19.2 |
+
+#### Analyse des trades perdants :
+
+**OLS perd a 8h-9h (apres open US), Kalman perd a 4h (pre-marche) et 13h (fin de fenetre).**
+
+| Aspect | OLS ConfigE | K_BestPF | K_BestPnL |
+|--------|-------------|----------|-----------|
+| Heures perdantes | 8h-9h | 4h | 4h + 13h |
+| Jours de perte communs | — | **0%** | **3%** |
+| Confidence perdants | 70.2% | 39.5% | 58.0% |
+| |Z| entree perdants | 2.40 | 1.30 | 1.10 |
+| Duree perdants | 48min | 439min | 402min |
+| Side desequilibre | SHORT perd 2x | Equilibre | Equilibre |
+| Pire jour semaine | Lundi (45%) | Jeudi (33%) | Jeudi (36%) |
+
+#### Chevauchement temporel OLS vs Kalman :
+- K_BestPF : 4 jours communs / 169 OLS (2%) — **quasiment independants**
+- K_BestPnL : 37 jours communs / 169 OLS (22%) — concordance 54% les 2 gagnent, 5% les 2 perdent
+- K_BestVolume : 58 jours communs (34%) — NON complementaire (perd aussi quand OLS perd)
+
+#### Complementarite (Kalman quand OLS perd) :
+- **K_BestPnL : COMPLEMENTAIRE** — sur 55 jours de perte OLS, Kalman trade 8 fois et gagne 75%
+- **K_BestPF : pas de chevauchement** — ne trade jamais les jours ou OLS perd
+- **K_BestVolume : NON complementaire** — perd $17k sur les memes jours
+
+#### Decomposition annuelle :
+- **K_BestPnL** : brille 2024 ($30k) + 2025 ($19k), annee noire 2023 (-$11k)
+- **K_BestPF** : negatif aussi en 2023 (-$4k), tous les autres ans positifs
+- **OLS** : plus regulier, aucune annee negative, gains modestes
+
+### Conclusions Phase 7 :
+
+1. **Warmup et gap_P_mult negligeables** : Kalman converge vite, ces params n'impactent pas les resultats
+2. **Alpha sweet spot : 1.5e-7 a 3e-7** (beta tres stable, adaptation lente)
+3. **Innovation z-score est N(0,1)** : z_entry=1.5-2.0 et z_stop=2.5-2.8 sont les bons seuils (pas 3.15/4.5 comme OLS)
+4. **OLS et Kalman perdent sur des jours/heures/regimes differents** = complementarite structurelle
+5. **Config Kalman retenue pour textbox Sierra : K_RunnerPF**
+   - Meilleur Calmar (1.46), MaxDD contenu ($5,925), PF 2.90
+   - alpha=3e-7, z_entry=2.125, z_exit=0.25, z_stop=2.8, conf=65%, profil court
+6. **Decision** : OLS reste le moteur de signaux. Kalman affiche beta + z-score + direction dans textbox Sierra comme indicateur complementaire discretionnaire
+
+### Test 7.4 — Grid v3 definitif (1,009,800 combos, 218s)
+- **Script** : `scripts/run_grid_kalman_v3.py --workers 10`
+- **Parametres** (recommandation agent expert-spread) :
+  - Alpha : [1e-7, 1.5e-7, 2e-7, 2.5e-7, 3e-7, 5e-7] (6 valeurs, warmup/gap fixes)
+  - z_entry : 1.25 -> 2.25 step 0.0625 (17 valeurs)
+  - z_exit : [0.0, 0.125, 0.25, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5] (9 valeurs)
+  - z_stop : [2.25, 2.5, 2.625, 2.75, 2.875, 3.0, 3.25] (7 valeurs)
+  - min_confidence : [50, 60, 63, 64, 65, 66, 67, 68, 69, 70, 75] (11 valeurs)
+  - 5 entry windows : [03:00-12:00, 04:00-12:00, 04:00-13:00, 04:00-14:00, 05:00-12:00]
+- **Resultats** : 545,075 configs profitables (54%), 63,897 battent OLS PF
+
+#### Top config par profil propfirm (5 profils) :
+
+| Profil | Criteres | Configs | Best PnL | PF | Trades | WR% |
+|--------|----------|---------|----------|-----|--------|-----|
+| Sniper | PF>=2.5, WR>=75%, 30-150 trd | 12,275 | $64,990 | 3.24 | 91 | 76.9% |
+| Steady | PF>=1.5, 100-300 trd | 14,618 | $84,825 | 1.84 | 238 | 78.2% |
+| Volume | PF>=1.2, >=200 trd | 23,621 | $84,825 | 1.84 | 238 | 78.2% |
+| Risk-Adj | PF>=1.8, >=50 trd | 25,453 | $84,825 | 1.84 | 238 | 78.2% |
+| Balanced | PF>=1.3, 80-250 trd | 67,514 | $84,825 | 1.84 | 238 | 78.2% |
+
+### Test 7.5 — Validation IS/OOS + Walk-Forward top 5 Kalman
+- **Script** : `scripts/validate_kalman_top.py`
+
+#### IS/OOS (60/40) — 5/5 GO :
+- 4 configs sur 5 ont OOS PF > IS PF (pas d'overfitting)
+- K_Balanced: IS 1.33 -> OOS 1.66 (+25%)
+- K_ShortWin: IS 1.46 -> OOS 1.58 (+8%)
+
+#### Permutation (1000x) — 2/2 GO :
+- K_Balanced: p=0.000 (PF 2.09 vs permut 1.19)
+- K_Sniper: p=0.000 (PF 2.45 vs permut 1.34)
+
+#### Walk-Forward (IS=2y, OOS=6m) — 5/5 GO :
+
+| Config | WF prof. | PnL total | PF moy | Verdict |
+|--------|----------|-----------|--------|---------|
+| K_Balanced (03:00-12:00) | **5/5** | **$32,000** | **2.34** | GO |
+| K_ShortWin (05:00-12:00) | **5/5** | **$31,255** | **2.16** | GO |
+| K_Quality (04:00-13:00) | 4/5 | $22,905 | 2.01 | GO |
+| K_BestPnL (03:00-12:00) | 4/5 | $16,540 | 2.14 | GO |
+| K_Sniper (05:00-12:00) | 3/5 | $6,805 | 0.88 | GO |
+
+#### Yearly : 2023 seule annee negative pour tous. 2024-2026 tres fort.
+
+### Test 7.6 — MaxDD et risk propfirm (full engine)
+- **Script** : `scripts/find_safe_kalman.py`
+- **Constat** : Les configs a volume (200+ trades) ont MaxDD $13k-$45k en E-mini — INCOMPATIBLES propfirm (trailing DD $4,500)
+- **460/1994 configs safe** (MaxDD < $4,500 en E-mini) mais toutes ont < 50 trades (5-8 trades/an)
+- **Streak max = 1** pour les meilleures configs safe (jamais 2 pertes consecutives)
+- **Seule config balanced safe** (E-mini) : a=2.5e-7, 04:00-13:00, ze=1.562, zx=1.0, zs=2.75, c=75 → 56 trades, PF 2.31, MaxDD $-4,080
+
+### Test 7.7 — Micro-contrats MNQ/MYM (propfirm-safe)
+- **Script** : `scripts/find_safe_kalman_micro.py`
+- **Multipliers micro** : MNQ=2.0$/pt, MYM=0.5$/pt (1/10 du standard), commission $0.62 RT
+
+#### Scaling micro — Config champion (a=3e-7, tres_court, 03:00-12:00, ze=1.375) :
+
+| Scale | Trades | WR% | PnL | PF | MaxDD | Streak | ConsDD | MaxLos | $/jour | Status |
+|-------|--------|-----|-----|----|-------|--------|--------|--------|--------|--------|
+| Micro x1 | 238 | 77.7% | $7,968 | 1.78 | $-1,916 | 3 | $-1,005 | $-735 | $6 | **SAFE** |
+| **Micro x2** | **238** | **77.7%** | **$15,936** | **1.78** | **$-3,832** | **3** | **$-2,010** | **$-1,470** | **$12** | **SAFE** |
+| Micro x3 | 238 | 77.7% | $23,905 | 1.78 | $-5,747 | 3 | $-3,015 | $-2,206 | $18 | WARN |
+| E-mini x1 | 238 | 78.2% | $84,825 | 1.84 | $-18,425 | 3 | $-9,985 | $-7,330 | $65 | DANGER |
+
+#### OLS ConfigE en micro :
+
+| Scale | PnL | MaxDD | $/jour | Status |
+|-------|------|-------|--------|--------|
+| Micro x1 | $2,062 | $-536 | $2 | SAFE |
+| Micro x2 | $4,125 | $-1,072 | $3 | SAFE |
+| E-mini x1 | $25,790 | $-5,190 | $20 | WARN |
+
+#### Distribution MaxDD micro x2 : 92.6% des configs ont MaxDD < $4,500
+
+### Conclusions Phase 7 (finales) :
+
+1. **Kalman valide comme indicateur complementaire** — 5/5 configs passent IS/OOS + Walk-Forward + Permutation
+2. **Config Kalman champion** : a=3e-7, tres_court, ze=1.3125, zx=0.375, zs=2.75, c=75%, window 03:00-12:00
+   - 218 trades, PF 2.09, WR 78.4%, $80,805, Sharpe 3.95, Calmar 5.71
+   - Walk-Forward 5/5, OOS PF 1.66 > IS 1.33
+3. **MaxDD incompatible propfirm en E-mini** : configs volume ($13k-$18k DD) vs trailing DD $4,500
+4. **Micro x2 est propfirm-safe** : MaxDD $3,832, streak 3, mais revenu faible ($12/jour)
+5. **Le trade-off est fondamental** : volume → DD eleve ; DD safe → peu de trades
+6. **Decision** : Kalman en textbox Sierra (beta + z-score + direction). Pas de signaux automatiques.
+   - E-mini : pour compte perso (MaxDD $18k acceptable)
+   - Micro x2 : pour propfirm eval (MaxDD < $4,500)

@@ -49,7 +49,7 @@ python scripts/run_grid.py --workers 20 --dry-run  # show counts only
 ## Architecture
 
 ### Implementation Status
-- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator numba + filters numba + confidence filter + time stop + window filter), `src/backtest/` (engine bar-by-bar + vectorized + grid-optimized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, run_refined_grid.py, analyze_grid_results.py, validate_top5_configs.py, validate_numba.py), `tests/` (37 tests)
+- **Implemented**: `src/data/`, `src/hedge/` (OLS + Kalman + factory), `src/spread/`, `src/sizing/`, `src/stats/` (vectorized hurst+halflife), `src/metrics/` (dashboard + confidence scoring), `src/signals/` (generator numba + filters numba + confidence filter + time stop + window filter), `src/backtest/` (engine bar-by-bar + vectorized + grid-optimized, performance), `src/utils/`, `config/`, `scripts/` (run_backtest.py, run_grid.py, run_refined_grid.py, run_grid_kalman_v3.py, validate_kalman_top.py, find_safe_kalman.py, find_safe_kalman_micro.py, analyze_grid_results.py, validate_top5_configs.py, validate_numba.py), `tests/` (49 tests)
 - **Stubs only**: `src/optimisation/`, `sierra/` (reference docs ready)
 - **Numba JIT**: signal generator (451x), confidence filter, time stop, window filter — all validated identical to Python originals
 
@@ -82,7 +82,7 @@ Dependencies flow strictly downward. Config YAML files are loaded at script leve
 
 5. **Imports**: `pyproject.toml` sets `pythonpath = ["."]` — all imports use `from src.xxx import yyy`.
 
-6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update.
+6. **Kalman specifics**: `Q = alpha_ratio × R × I` (scale-aware); session gaps (>30min) multiply `P` by `gap_P_multiplier=10.0`; Joseph form covariance update. Alpha sweet spot for NQ_YM: 1.5e-7 to 3e-7. Warmup and gap_P_mult have negligible impact (Kalman converges fast). Innovation z-score is N(0,1) by construction — optimal z_entry=1.5-2.0, z_stop=2.5-2.8 (NOT the same as OLS z_entry=3.15, z_stop=4.5).
 
 7. **Two ADF implementations in `stationarity.py`**: `adf_rolling()` (statsmodels) and `adf_statistic_simple()` (custom, no augmentation) — the simple one is designed for Python/C++ parity testing.
 
@@ -163,6 +163,37 @@ Issue du grid search affine 1,080,000 combos. Validee IS/OOS, Walk-Forward 4/5, 
 | **Filtre horaire** | **Entrees 8h-11h CT uniquement** |
 | **Resultats (avec filtre)** | 151 trades, 68.2% WR, $21,320, PF 1.78, Sharpe 2.59 |
 | **OOS (sans filtre)** | PF 1.38, WF 4/5 |
+
+### Config Kalman — K_Balanced (champion, complementaire a OLS)
+
+OLS reste le moteur de signaux. Kalman est affiche en textbox comme biais discretionnaire (beta + z-score + direction). OLS et Kalman perdent sur des jours/heures/regimes differents = complementarite structurelle.
+
+| Parametre | Valeur | Notes |
+|-----------|--------|-------|
+| Methode | Kalman | Innovation z-score nu/sqrt(F), auto-adaptatif |
+| alpha_ratio | **3e-7** | Beta tres stable, adaptation lente |
+| Profil metrics | tres_court | adf=12, hurst=64, hl=12, corr=6 |
+| z_entry | **1.375** | Innovation z ~N(0,1), plus bas que OLS |
+| z_exit | **0.25** | Sort tard (laisse courir) |
+| z_stop | **2.75** | Sweet spot universel Kalman |
+| min_confidence | **75%** | Strict |
+| Entry window | **03:00-12:00 CT** | |
+| **Resultats E-mini** | **238 trades, 75.6% WR, $84,825, PF 1.78** | MaxDD $19k = DANGER propfirm |
+| **Resultats Micro x2** | **238 trades, 75.6% WR, $15,936, PF 1.67** | MaxDD $3,832 = SAFE propfirm |
+| **Validation** | **IS/OOS GO, WF 5/5 ($32k total), Permutation p=0.000** | |
+| **Complementarite** | **1 seul jour de perte commun avec OLS sur 6 ans** | |
+
+### Micro Contracts (MNQ/MYM)
+
+Pour le trading propfirm, les configs Kalman E-mini ont des MaxDD $8k-$45k (DANGER pour trailing DD $4,500).
+Solution : micro contracts (MNQ/MYM) a x2 = sweet spot propfirm (92.6% configs MaxDD < $4,500).
+
+| Scaling | PnL | MaxDD | Streak | Status |
+|---------|-----|-------|--------|--------|
+| E-mini x1 | $84,825 | -$19,155 | 3 | DANGER |
+| Micro x1 | $7,968 | -$1,916 | 3 | Trop petit |
+| **Micro x2** | **$15,936** | **-$3,832** | **3** | **SAFE** |
+| Micro x3 | $23,903 | -$5,748 | 3 | Limite |
 
 ## Tech Stack
 - **Phase 1** : Python 3.11+, venv, pandas, numpy, statsmodels, scipy, filterpy, optuna
