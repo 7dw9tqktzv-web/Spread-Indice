@@ -44,7 +44,6 @@ const float YM_TICK_VALUE = 5.0f;     // $5 par tick
 
 // Seuils statistiques
 const float ADF_CRITICAL_5PCT = -2.86f;
-const float HURST_MEAN_REVERSION = 0.5f;
 
 // ============================================================================
 // STATE MACHINE (4 etats)
@@ -482,23 +481,17 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     SCSubgraphRef ZScore         = sc.Subgraph[4];    // LINE 2px Cyan (dynamic)
     SCSubgraphRef ZEntryPlus     = sc.Subgraph[5];    // LINE 1px DASH Red (+3.15)
     SCSubgraphRef ZEntryMinus    = sc.Subgraph[6];    // LINE 1px DASH Green (-3.15)
-    SCSubgraphRef ZExitPlus      = sc.Subgraph[7];    // LINE 1px DOT Orange (+1.00)
-    SCSubgraphRef ZExitMinus     = sc.Subgraph[8];    // LINE 1px DOT Orange (-1.00)
-    SCSubgraphRef ZStopPlus      = sc.Subgraph[9];    // LINE 1px DASH Red vif (+4.50)
-    SCSubgraphRef ZStopMinus     = sc.Subgraph[10];   // LINE 1px DASH Red vif (-4.50)
     SCSubgraphRef ZZeroLine      = sc.Subgraph[11];   // LINE 1px Gray
 
     // --- Statistics ---
     SCSubgraphRef ADFStat        = sc.Subgraph[12];   // LINE 1px Purple (dynamic)
     SCSubgraphRef ADFCritical    = sc.Subgraph[13];   // LINE 1px DASH White (-2.86)
     SCSubgraphRef HurstExp       = sc.Subgraph[14];   // LINE 1px Green (dynamic)
-    SCSubgraphRef Hurst05        = sc.Subgraph[15];   // LINE 1px DASH White (0.5)
     SCSubgraphRef CorrLine       = sc.Subgraph[16];   // LINE 1px Orange (dynamic)
     SCSubgraphRef HalfLifeLine   = sc.Subgraph[17];   // LINE 1px Orange light
 
     // --- Confidence & Signals ---
     SCSubgraphRef ConfScore      = sc.Subgraph[18];   // BAR 3px dynamic
-    SCSubgraphRef ConfThreshold  = sc.Subgraph[19];   // LINE 1px DASH White (67%)
     SCSubgraphRef SignalLong     = sc.Subgraph[20];   // ARROW_UP 3px Green
     SCSubgraphRef SignalShort    = sc.Subgraph[21];   // ARROW_DOWN 3px Red
     SCSubgraphRef SignalExit     = sc.Subgraph[22];   // DIAMOND 2px White
@@ -609,22 +602,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         ZEntryMinus.LineStyle = LINESTYLE_DASH;
         ZEntryMinus.DrawZeros = false;
 
-        ZExitPlus.Name = "Z Exit + (hidden)";
-        ZExitPlus.DrawStyle = DRAWSTYLE_IGNORE;
-        ZExitPlus.DrawZeros = false;
-
-        ZExitMinus.Name = "Z Exit - (hidden)";
-        ZExitMinus.DrawStyle = DRAWSTYLE_IGNORE;
-        ZExitMinus.DrawZeros = false;
-
-        ZStopPlus.Name = "Z Stop + (hidden)";
-        ZStopPlus.DrawStyle = DRAWSTYLE_IGNORE;
-        ZStopPlus.DrawZeros = false;
-
-        ZStopMinus.Name = "Z Stop - (hidden)";
-        ZStopMinus.DrawStyle = DRAWSTYLE_IGNORE;
-        ZStopMinus.DrawZeros = false;
-
         ZZeroLine.Name = "Z Zero";
         ZZeroLine.DrawStyle = DRAWSTYLE_LINE;
         ZZeroLine.PrimaryColor = RGB(128, 128, 128);
@@ -653,10 +630,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         HurstExp.LineWidth = 1;
         HurstExp.DrawZeros = false;
 
-        Hurst05.Name = "Hurst 0.5 (hidden)";
-        Hurst05.DrawStyle = DRAWSTYLE_IGNORE;
-        Hurst05.DrawZeros = false;
-
         CorrLine.Name = "Correlation";
         CorrLine.DrawStyle = DRAWSTYLE_LINE;
         CorrLine.PrimaryColor = RGB(255, 165, 0);
@@ -677,10 +650,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         ConfScore.SecondaryColorUsed = 1;
         ConfScore.LineWidth = 3;
         ConfScore.DrawZeros = false;
-
-        ConfThreshold.Name = "Conf Threshold (hidden)";
-        ConfThreshold.DrawStyle = DRAWSTYLE_IGNORE;
-        ConfThreshold.DrawZeros = false;
 
         SignalLong.Name = "Signal LONG (Buy NQ, Sell YM)";
         SignalLong.DrawStyle = DRAWSTYLE_ARROW_UP;
@@ -878,7 +847,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     double& K_P10 = sc.GetPersistentDouble(5);
     double& K_P11 = sc.GetPersistentDouble(6);
     double& K_R = sc.GetPersistentDouble(7);
-    double& K_center = sc.GetPersistentDouble(8);  // H centering for numerical stability
     int& K_Initialized = sc.GetPersistentInt(1);
     int& K_WarmupCount = sc.GetPersistentInt(2);
 
@@ -896,7 +864,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         K_theta1 = 1.0;
         K_P00 = 1.0; K_P01 = 0.0; K_P10 = 0.0; K_P11 = 1.0;
         K_R = 1e-5;
-        K_center = 0.0;
         K_Initialized = 0;
         K_WarmupCount = 0;
 
@@ -957,30 +924,23 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         float initBeta = CalculateOLSBeta(LogYM, LogNQ, kalmanRBars - 1, kalmanRBars, initAlpha);
 
         // Compute residual variance (population variance like Python np.var)
-        // AND centering constant for H vector (numerical stability)
         double sumR = 0.0, sumR2 = 0.0;
-        double sumLogYM = 0.0;
         for (int i = 0; i < kalmanRBars; i++)
         {
             double r = (double)LogNQ[i] - (double)initAlpha - (double)initBeta * (double)LogYM[i];
             sumR += r;
             sumR2 += r * r;
-            sumLogYM += (double)LogYM[i];
         }
         double meanR = sumR / kalmanRBars;
         K_R = (sumR2 / kalmanRBars) - meanR * meanR;  // population variance (ddof=0)
         if (K_R < 1e-8) K_R = 1e-5;
 
-        // H centering: H = [1, log_ym - center] prevents near-singular P
-        // With raw H = [1, ~10.7], P becomes ill-conditioned after 1 update (det~3e-6)
-        K_center = sumLogYM / kalmanRBars;
-
-        // theta_centered = [center, 1] so initial prediction = log_ym (same as Python)
-        // Model: log_nq = theta0_c + theta1 * (log_ym - center)
-        // With theta0_c = center, theta1 = 1: pred = center + 1*(log_ym - center) = log_ym
-        K_theta0 = K_center;
-        K_theta1 = 1.0;
-        // P = I (identity) — well-conditioned with centered H
+        // Initial state: theta from OLS (pre-converged)
+        // Python runs 999 extra bars from bar 0; C++ starts at bar 999.
+        // Using OLS estimate avoids slow convergence with tiny Q.
+        // Model: log_nq = theta0 + theta1 * log_ym, H = [1, log_ym]
+        K_theta0 = (double)initAlpha;
+        K_theta1 = (double)initBeta;
         K_P00 = 1.0;  K_P01 = 0.0;
         K_P10 = 0.0; K_P11 = 1.0;
         K_Initialized = 1;
@@ -991,26 +951,20 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
 
     if (K_Initialized == 1)
     {
-        double log_nq = (double)LogNQ[sc.Index];
-        double log_ym = (double)LogYM[sc.Index];
+        // Full double precision (bypass float storage for Kalman)
+        double log_nq = log((double)NQClose);
+        double log_ym = log((double)YMClose);
 
         double qScalar = (double)KalmanAlphaRatio * K_R;
 
-        // Gap detection: check time difference > 30 min
+        // Gap detection: absolute datetime difference (handles weekends/holidays)
         if (sc.Index > 0)
         {
             SCDateTime prevDT = sc.BaseDateTimeIn[sc.Index - 1];
             SCDateTime currDT = sc.BaseDateTimeIn[sc.Index];
-            int prevTimeSecs = prevDT.GetTimeInSeconds();
-            int currTimeSecs = currDT.GetTimeInSeconds();
-            int gapSeconds = currTimeSecs - prevTimeSecs;
-            // Handle midnight wrap
-            if (gapSeconds < 0) gapSeconds += 86400;
-            // Handle date change (multi-day gap)
-            int prevDate = prevDT.GetDate();
-            int currDate = currDT.GetDate();
-            if (currDate != prevDate && gapSeconds < 0)
-                gapSeconds += 86400;
+            int64_t prevAbs = (int64_t)prevDT.GetDate() * 86400 + prevDT.GetTimeInSeconds();
+            int64_t currAbs = (int64_t)currDT.GetDate() * 86400 + currDT.GetTimeInSeconds();
+            int gapSeconds = (currAbs > prevAbs) ? (int)(currAbs - prevAbs) : 0;
             if (gapSeconds > 1800)  // > 30 minutes
             {
                 double gapMult = (double)GapPMultVal;
@@ -1025,9 +979,9 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         K_P00 += qScalar;
         K_P11 += qScalar;
 
-        // H = [1, log_ym - center] (centered for numerical stability)
+        // H = [1, log_ym] (matches Python, no centering)
         double H0 = 1.0;
-        double H1 = log_ym - K_center;
+        double H1 = log_ym;
 
         // Innovation
         double y_pred = K_theta0 * H0 + K_theta1 * H1;
@@ -1123,11 +1077,9 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         ADFStat[sc.Index] = 0.0f;
         ADFCritical[sc.Index] = 0.0f;
         HurstExp[sc.Index] = 0.0f;
-        Hurst05[sc.Index] = 0.0f;
         HalfLifeLine[sc.Index] = 0.0f;
         CorrLine[sc.Index] = 0.0f;
         ConfScore[sc.Index] = 0.0f;
-        ConfThreshold[sc.Index] = 0.0f;
         OLSBetaSG[sc.Index] = 0.0f;
         OLSAlphaSG[sc.Index] = 0.0f;
         TradeStateSG[sc.Index] = 0.0f;
@@ -1533,5 +1485,68 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         DashBox.TextAlignment = DT_LEFT;
         DashBox.AddMethod = UTAM_ADD_OR_ADJUST;
         sc.UseTool(DashBox);
+
+        // ============================================================
+        // PANEL 3 — SIZING (exact ratios, standard + micro)
+        // ============================================================
+
+        // OLS sizing: N_YM = (NQ_not / YM_not) * beta_ols
+        float olsRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * beta;
+        int olsRoundStd = (int)(olsRatioExact + 0.5f);
+        if (olsRoundStd < 1) olsRoundStd = 1;
+
+        // Kalman sizing: N_YM = (NQ_not / YM_not) * beta_kalman
+        float kalRatioExact = 0.0f;
+        if (kalBeta > 0.0f)
+            kalRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * kalBeta;
+        int kalRoundStd = (int)(kalRatioExact + 0.5f);
+        if (kalRoundStd < 1 && kalBeta > 0.0f) kalRoundStd = 1;
+
+        // Micro: MNQ=$2/pt, MYM=$0.50/pt — ratio identique (mult/10)
+        // Mx2: 2 MNQ -> 2 * ratio MYM (meilleure granularite)
+        float mx2OlsExact = olsRatioExact * 2.0f;
+        int mx2OlsRound = (int)(mx2OlsExact + 0.5f);
+        float mx2KalExact = kalRatioExact * 2.0f;
+        int mx2KalRound = (int)(mx2KalExact + 0.5f);
+
+        // Notionals
+        float notNQ = NQClose * NQ_MULTIPLIER;
+        float notYM = YMClose * YM_MULTIPLIER;
+
+        SCString SizingText;
+        SizingText.Format(
+            "  SIZING  Dollar-Neutral x Beta\n"
+            "                   OLS (%.4f)      Kalman (%.4f)\n"
+            "  Standard  1 NQ / %.4f YM   |   1 NQ / %.4f YM\n"
+            "  Round     1 NQ / %d YM        |   1 NQ / %d YM\n"
+            "  Micro x2  2 MNQ / %.4f MYM |   2 MNQ / %.4f MYM\n"
+            "  Round     2 MNQ / %d MYM      |   2 MNQ / %d MYM\n"
+            "  Notional:  NQ $%.0f   YM $%.0f",
+            beta, kalBeta,
+            olsRatioExact, kalRatioExact,
+            olsRoundStd, kalRoundStd,
+            mx2OlsExact, mx2KalExact,
+            mx2OlsRound, mx2KalRound,
+            notNQ, notYM
+        );
+
+        s_UseTool SizingBox;
+        SizingBox.Clear();
+        SizingBox.ChartNumber = sc.ChartNumber;
+        SizingBox.DrawingType = DRAWING_TEXT;
+        SizingBox.LineNumber = 10003;
+        SizingBox.BeginDateTime = 5;
+        SizingBox.BeginValue = 58;
+        SizingBox.UseRelativeVerticalValues = 1;
+        SizingBox.Region = sc.GraphRegion;
+        SizingBox.Text = SizingText;
+        SizingBox.FontSize = 8;
+        SizingBox.FontBold = 0;
+        SizingBox.Color = RGB(170, 180, 200);
+        SizingBox.FontBackColor = RGB(25, 25, 35);
+        SizingBox.TransparentLabelBackground = 0;
+        SizingBox.TextAlignment = DT_LEFT;
+        SizingBox.AddMethod = UTAM_ADD_OR_ADJUST;
+        sc.UseTool(SizingBox);
     }
 }

@@ -23,7 +23,7 @@ Scripts a executer depuis la racine (cache = `output/cache`). Raw data (`raw/*.t
 
 ### Implementation Status
 Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (4 YAML), 40 scripts, 62 tests. Stubs : `src/optimisation/`.
-Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (1537 lignes) -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
+Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (~1480 lignes) -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread/builder` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
@@ -75,9 +75,11 @@ Lire `CHANGELOG.md` en debut de session. Verifier avant de proposer un test.
 Voir MEMORY.md pour les parametres et resultats detailles de chaque config (Config E, K_Balanced, NQ_RTY Top 3 OLS, NQ_RTY Kalman textbox).
 
 ## Phase 2a -- Sierra NQ_YM (VALIDE)
-Fichier : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (1537 lignes). DLL 64-bit, VS 2022 Build Tools.
-30 subgraphs, 22 inputs, 7 fonctions utilitaires. Kalman via PersistentDouble (precision double requise, Q=3e-13). H centering (`log_ym - center`) pour stabilite numerique.
-Parite signaux C++/Python : **99.9%**. Metriques brutes : Spread r=0.996, Z-Score r=0.974, Beta r=0.971.
+Fichier : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (~1480 lignes). DLL 64-bit, VS 2022 Build Tools.
+24 subgraphs (6 dead slots supprimes), 22 inputs, 7 fonctions utilitaires. Kalman via PersistentDouble (precision double requise, Q = alpha_ratio x R ~ 3e-12). H = [1, log_ym] sans centering (parite Python exacte).
+Gap detection via GetDate()/GetTimeInSeconds() absolus (gere weekends/holidays).
+Parite signaux C++/Python : **99.9%**. Metriques brutes : Spread r=0.996, Z-Score r=0.974, Beta OLS r=0.971.
+Compilation : `F:\SierreChart_Spread_Indices\ACS_Source\VisualCCompile.Bat` -> `Data\NQ_YM_SpreadMeanReversion_64.dll`.
 Phase 2b a venir : auto-trading, dollar stop, regime indicator.
 
 ## Key Conventions
