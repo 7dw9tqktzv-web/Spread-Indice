@@ -309,7 +309,7 @@ def main():
                       f"trades moy={row['avg_trades']:.0f}, PnL moy=${row['avg_pnl']:,.0f}")
 
     # Save to CSV
-    output_path = PROJECT_ROOT / "output" / "grids" / "refined_grid_results.csv"
+    output_path = PROJECT_ROOT / "output" / "NQ_YM" / "grid_refined_ols.csv"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"\n Resultats complets sauvegardes: {output_path}")

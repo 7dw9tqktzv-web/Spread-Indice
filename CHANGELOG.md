@@ -1,246 +1,22 @@
 # CHANGELOG — Recherche Backtest Spread Indice
 
 Historique chronologique des tests, resultats et decisions.
-Derniere mise a jour : 2026-02-22
+Derniere mise a jour : 2026-02-23
 
 ---
 
-## Phase 0 — Backtest exploratoire par paire (NQ_ES focus)
+## Phases 0-5 — Exploration et validation initiale (resume)
 
-### Test 0.1 — OLS rolling NQ_ES (toutes configs)
-- **Configs** : z_entry 2.0-3.0, OLS window 10-30j, tous profils metrics
-- **Resultat** : Toutes configs perdantes sur NQ_ES en OLS rolling
-- **Conclusion** : OLS rolling ne fonctionne pas sur NQ_ES
+Exploration exhaustive sur 6 paires, 43,200 configs OLS broad grid, ablation des filtres, validation quant complete, multi-timeframe. Conclusions cles :
 
-### Test 0.2 — Kalman NQ_ES
-- a=1e-6 entry=2.0 conf=50% : 24 trades, 79% win, +$8,575, PF 3.45 (echantillon faible)
-- a=1e-7 entry=2.5 conf=50% : 55 trades, 56% win, +$6,123, PF 1.33
-- **Conclusion** : NQ_ES seule paire avec edge symetrique long/short confirme
-
-### Test 0.3 — Kalman NQ_RTY
-- a=1e-7 : +$21,650, PF 2.67, 77% win
-- **Conclusion** : REJET — profit vient du biais long (NQ surperforme structurellement)
-
-### Test 0.4 — ES_YM
-- **Resultat** : Systematiquement perdant sur toutes configs
-- **Conclusion** : Paire non viable
-
----
-
-## Phase 1 — Grid Search 43,200 configs
-
-### Test 1.1 — Grid search complet (6 paires x 7,200 combos)
-- **Script** : `scripts/run_grid.py --workers 20`
-- **Parametres** :
-  - OLS window : 1320, 2640, 3960, 5280, 6600, 7920
-  - ZW : 12, 24, 36, 48
-  - z_entry : 2.0, 2.5, 3.0
-  - z_exit : 0.0, 1.0, 1.5, 2.0
-  - z_stop : 3.0, 3.5, 4.0
-  - profil metrics : 3 profils
-  - min_confidence : 50%, 60%, 70%, 80%
-- **Champion brut** : NQ_YM, OLS=5280, ZW=12, e=2.0, x=0.0, s=3.0
-
-### Findings grid search :
-1. **z_exit=0.0 est un ARTEFACT** — exit=0 = ne jamais sortir sauf stop loss
-2. **Confidence filtre elimine les BONS trades au-dela de 40%** (dans la config champion brute)
-3. **Zone robuste** : OLS=2640, ZW=36, profil=tres_court, z_entry=3.0, z_exit=1.5
-4. NQ_YM domine toutes les paires
-5. Config champion fragile (pic isole en PnL, les voisins chutent)
-
----
-
-## Phase 2 — Ablation des filtres (Approche A)
-
-### Test 2.1 — Ablation filtres individuels NQ_YM
-- **Script** : `scripts/analyze_filters.py`
-- **Config robuste** : OLS=2640, ZW=36, e=3.0, x=1.5, s=4.0, profil tres_court
-- **Seuils binaires** : ADF<-2.86, Hurst<0.45, Corr>0.80, HL in [5,120]
-
-| Filtre | Trades | PnL | PF |
-|--------|--------|-----|-----|
-| Aucun filtre (z-score pur) | 1,859 | -$121k | 0.80 |
-| Confidence >= 70% | 94 | +$13,650 | 2.22 |
-| Regime ALL ON (binaire) | 0 | — | — |
-| Hurst+Corr+HL (sans ADF) | 510 | +$4,700 | 1.03 |
-| ADF seul | 48 | -$1,800 | 0.76 |
-| Hurst seul | 1,038 | -$34k | 0.86 |
-| Corr seule | 791 | +$9,000 | 1.08 |
-| HL seul | 1,170 | -$52k | 0.83 |
-
-### Test 2.2 — Grille seuils Hurst x Corr (16 combos)
-- **Meilleur** : H<0.45 C>0.85 HL → 470 trades, +$9k, PF 1.08
-- **Conclusion** : Filtres binaires insuffisants. Le scoring continu du confidence fait le travail.
-
-### Test 2.3 — ADF kill switch 480 bars
-- ADF 480 seul : 53 trades, PF 1.20
-- ADF 480 + Hurst+Corr+HL : 0 trades (trop restrictif)
-- **Conclusion** : ADF sur 12 bars = inutile (2.6% pass rate, median -0.69 vs seuil -2.86). Sur 480 bars = marginal.
-
-### Insight cle Phase 2 :
-Le confidence score (scoring continu + poids ADF 40%) selectionne 94/1859 trades avec PF 2.22.
-Les filtres binaires individuels n'arrivent pas au meme resultat.
-Le scoring continu capture des fenetres ou TOUTES les metriques sont simultanement favorables.
-
----
-
-## Phase 3 — Validation quant complete
-
-### Test 3.1 — Distribution temporelle (1A)
-- **Script** : `scripts/validate_confidence.py --temporal`
-- **Config** : e=3.0, x=1.5, c=70%
-- 94 trades sur 6 ans (2021-2026)
-- Long/short symetrique (les 2 cotes profitables)
-- Concentration max 1 annee : 39.9% du PnL
-- **VERDICT : GO**
-
-### Test 3.2 — IS/OOS split 60/40 (3A)
-- **Script** : `scripts/validate_confidence.py --isoos`
-- IS (2020-12 → 2024-01) : 54 trades, PF 2.29, Sharpe 1.12
-- OOS (2024-01 → 2026-02) : 40 trades, PF 2.14, Sharpe 1.08
-- Degradation minimale IS → OOS
-- **VERDICT : GO**
-
-### Test 3.3 — Test de permutation 1000x (3B)
-- **Script** : `scripts/validate_confidence.py --permutation`
-- PF observe : 2.22 | PF permutations moyen : ~0.80
-- 0/1000 permutations battent le PF observe
-- p-value = 0.000
-- **VERDICT : GO** — le confidence score capture un signal reel, non reproductible par hasard
-
-### Test 3.4 — Decomposition composantes (1B)
-- **Script** : `scripts/validate_confidence.py --decompose`
-- Correlation de rang Spearman (sous-score vs PnL) : aucune significative
-- Pas de composante individuelle predictive du PnL
-- **VERDICT : NEUTRE** — le filtre agit comme gate (entre/n'entre pas), pas comme predicteur de magnitude
-
-### Test 3.5 — Sensibilite parametrique (2A)
-- **Script** : `scripts/validate_confidence.py --sensitivity`
-- ~30 perturbations des params du confidence score
-- 62% des configs gardent PF > 1.5
-- **VERDICT : MARGINAL** — robuste mais pas insensible
-
-### Test 3.6 — Walk-Forward (3C)
-- **Script** : `scripts/validate_confidence.py --walkforward`
-- IS=2 ans, OOS=6 mois, pas=6 mois → 6 fenetres
-- 5/6 fenetres OOS profitables
-- PF moyen OOS : 3.15
-- PnL total OOS : ~$29,850
-- **VERDICT : GO**
-
-### Test 3.7 — Monte Carlo propfirm (4A)
-- **Script** : `scripts/validate_confidence.py --propfirm`
-- 10,000 simulations, 27 trades/an (realiste OOS)
-- P(atteindre $75k) < 1% | PnL annuel moyen : ~$3,200
-- **VERDICT : STOP** — edge reel mais volume insuffisant pour $300/jour
-
----
-
-## Phase 4 — Recherche du sweet spot volume/qualite
-
-### Test 4.1 — Sweep confidence 58-81% (granularite 1%)
-- Transition nette a 66→67% : PF passe de ~1.03 a 1.20
-- Sweet spot : 67-69% (98-128 trades, PF 1.20-1.67)
-- Au-dela de 70% : PF monte mais <30 trades
-
-### Test 4.2 — IS/OOS par palier de confidence
-
-| Conf | IS Trades | IS PF | OOS Trades | OOS PF | OOS Sharpe |
-|------|-----------|-------|------------|--------|------------|
-| 67% | 75 | 1.21 | 53 | 1.17 | 0.28 |
-| 68% | 65 | 1.67 | 45 | 1.21 | 0.32 |
-| 69% | 57 | 2.16 | 41 | 1.29 | 0.42 |
-| 70% | 54 | 2.29 | 40 | 2.14 | 1.08 |
-
-### Test 4.3 — Mini-grid 84 combos (z_entry x z_exit x confidence)
-- z_entry : 2.5, 3.0, 3.5
-- z_exit : 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00
-- confidence : 67%, 68%, 69%, 70%
-- **z_entry=2.5 : TOUT negatif** — le spread doit etre a 3 sigma minimum
-- **Decouverte z_exit=1.25** : plus de trades que 1.5 tout en gardant la qualite
-
-### Top 5 configs mini-grid :
-
-| # | Entry | Exit | Conf | Trades | PF | Sharpe | DD% | Score |
-|---|-------|------|------|--------|-----|--------|-----|-------|
-| 1 | 3.5 | 1.25 | 70% | 74 | 2.93 | 1.13 | 2.2% | 28.5 |
-| 2 | 3.0 | 1.25 | 70% | 144 | 1.99 | 1.18 | 3.7% | 28.1 |
-| 3 | 3.0 | 1.50 | 70% | 94 | 2.22 | 1.10 | 1.9% | 23.7 |
-| 4 | 3.5 | 1.50 | 70% | 51 | 2.99 | 0.96 | 2.2% | 20.5 |
-| 5 | 3.0 | 0.50 | 67% | 503 | 1.25 | 0.64 | 22.4% | 17.9 |
-
-### Test 4.4 — Validation IS/OOS + Walk-Forward des top 5
-
-| # | Config | OOS PF | OOS Sharpe | WF profitables | WF PnL total |
-|---|--------|--------|------------|----------------|--------------|
-| 1 | e=3.5 x=1.25 c=70 | 2.98 | 1.27 | 6/6 | $31,070 |
-| 2 | e=3.0 x=1.25 c=70 | 1.56 | 0.68 | 6/6 | $30,535 |
-| 3 | e=3.0 x=1.50 c=70 | 2.14 | 1.08 | 5/6 | $29,850 |
-| 4 | e=3.5 x=1.50 c=70 | ~inf | 1.95 | 5/6 | $19,130 |
-| 5 | e=3.0 x=0.50 c=67 | — | — | 5/6 | $35,490 |
-
-Toutes les top 5 passent la validation. Edge confirme sur toute la grille z_entry >= 3.0.
-
----
-
-## Phase 5 — Multi-timeframe (1min, 3min, 5min)
-
-### Test 5.1 — Scaling lineaire des parametres
-Parametres scales proportionnellement au timeframe (meme duree temporelle) :
-
-| Param | 5min | 3min (x5/3) | 1min (x5) |
-|-------|------|-------------|-----------|
-| OLS | 2640 | 4400 | 13200 |
-| ZW | 36 | 60 | 180 |
-| ADF | 12 | 20 | 60 |
-| Hurst | 64 | 107 | 320 |
-| HL | 12 | 20 | 60 |
-| Corr | 6 | 10 | 30 |
-
-### Resultats multi-timeframe :
-
-| TF | Config | Trades | PF | Sharpe | OOS PF |
-|----|--------|--------|-----|--------|--------|
-| 5min | e=3.0 x=1.25 c=70 | 144 | 1.99 | 1.18 | 1.56 |
-| 5min | e=3.5 x=1.25 c=70 | 74 | 2.93 | 1.53 | 2.98 |
-| 3min | e=3.0 x=1.25 c=70 | 156 | 1.29 | 0.43 | ~2.4 |
-| 3min | e=3.0 x=1.50 c=70 | ~100 | ~1.1 | — | ~2.9 |
-| 1min | e=3.0 x=1.25 c=70 | 393 | 0.84 | neg | neg |
-
-### Conclusion multi-timeframe :
-- **5min reste le meilleur** — edge valide
-- **3min** : IS faible mais OOS fort → anomalie, probablement besoin de calibration propre (pas de scaling lineaire)
-- **1min** : negatif — le bruit microstructure tue l'edge
-- **Le scaling lineaire x5 est tautologique** — meme duree temporelle = meme information. Pour que 1min apporte quelque chose, il faudrait explorer des lookbacks plus courts (regimes intraday).
-
----
-
-## Conclusion globale (etat au 2026-02-21)
-
-### Config selectionnee : Config E (Principale)
-- **Paire** : NQ_YM (5min)
-- **Methode** : OLS rolling
-- **Parametres** : OLS=3300, ZW=30, z_entry=3.15, z_exit=1.00, z_stop=4.50, conf>=67%, pas de time stop, window 02:00-14:00 CT, flat 15:30 CT
-- **Performance** : 225 trades / 5.2 ans (43/an), PF 1.83, Sharpe 1.26, Calmar 0.96, WR 67.1%, PnL $25,790, MaxDD -$5,190
-- **Validation** : IS/OOS GO (PF OOS 1.73 > IS 1.69), Walk-Forward 4/5, Permutation p=0.000
-
-### Config backup : Config C (Volume+Filtre horaire)
-- **Parametres** : OLS=2970, ZW=42, z_entry=2.95, z_exit=1.25, z_stop=4.00, conf>=67%, pas de time stop, window 02:00-15:00 CT + filtre horaire 8h-11h CT, flat 15:30 CT
-- **Performance** : 351 trades / 5.2 ans (68/an), PF 1.53, Sharpe 1.16, WR 62.1%, PnL $25,780, MaxDD -$4,450
-- **Avec filtre 8h-11h** : PF monte a 1.78, volume reduit mais qualite amelioree
-- **Validation** : IS/OOS GO (PF OOS 1.67), Walk-Forward 4/5
-
-### Pourquoi Config E :
-- Meilleur compromis volume (43 trades/an) vs qualite (PF 1.83)
-- OOS > IS (pas d'overfitting)
-- Walk-Forward 4/5 solide
-- Pas de time stop = moins de parametres = plus robuste
-
-### Pistes non explorees :
-1. **Mode overlay** : utiliser le confidence score comme filtre de timing sur un biais macro discretionnaire
-2. **Calibration 3min independante** : explorer des lookbacks plus courts (pas de scaling lineaire du 5min)
-3. **Multi-paire** : agreger NQ_YM + NQ_ES pour augmenter le volume
-4. **Filtre horaire fin** : 8h-12h CT concentre 85% du profit — bloquer 4h-6h recupere ~$865
+- **NQ_YM domine** toutes les paires en OLS. NQ_ES : Kalman marginal. ES_YM : systematiquement perdant.
+- **z_exit=0.0 est un artefact** (ne jamais sortir sauf stop). **z_entry=2.5 tout negatif** (3+ sigma minimum).
+- **Confidence scoring continu >> filtres binaires** : 94/1859 trades selectionnes, PF 2.22 vs 0.80 sans filtre.
+- **Validation IS/OOS GO, Walk-Forward 5/6, Permutation p=0.000** sur la config exploratoire.
+- **Monte Carlo propfirm : STOP** -- edge reel mais volume insuffisant (27 trades/an) pour $300/jour.
+- **5min optimal**, 1min negatif (bruit microstructure), 3min anomalie IS/OOS.
+- **Sweet spot confidence : 67-69%** (transition nette a 67%).
+- **8h-12h CT concentre 85% du profit** (heures US open).
 
 ---
 
@@ -626,3 +402,257 @@ Le regime macro 2023 (tech rally NQ +38.2% vs value YM +8.9%) a detruit la coint
 - `scripts/test_adaptive_r.py` — Test P1 R adaptatif (55 backtests)
 - `scripts/analyze_kalman_diagnostics.py` — Analyse P2 + deconfounding P_trace
 - `scripts/analyze_2023_losses.py` — Autopsie 2023 (10 dimensions)
+
+---
+
+## Phase 9 — Grid Search NQ/RTY + ES/RTY (2026-02-22)
+
+Objectif : tester si NQ/RTY ou ES/RTY offrent un edge exploitable (complement a NQ/YM).
+
+### Etape 0 — Diagnostic spread
+
+Diagnostics sur 3 paires (Hurst, ADF, correlation, drift, ACF) :
+- **NQ/RTY** : Hurst 0.362, ADF significatif 10.5%, Corr 0.609, drift -0.020 → MARGINAL
+- **ES/RTY** : Hurst 0.350, ADF significatif 11.4%, Corr 0.734, beta plus stable → MARGINAL
+- **NQ/YM** (reference) : Hurst 0.410, ADF significatif 15.6%, Corr 0.910
+
+Les deux paires passent le gate pour l'exploration.
+
+### Etape 1 — Exploration rapide (6 OLS + 6 Kalman par paire)
+
+**NQ/RTY** :
+- OLS : 0/6 profitable — non viable
+- Kalman : 3/6 profitable, symetrie L/S confirmee (47-53% long)
+- Meilleur : K balanced a=3e-7, $9,810, PF 1.76, WR 75.6%
+
+**ES/RTY** :
+- OLS : 0/6 profitable
+- Kalman : 1/6 a peine positif ($1,620)
+- **DECISION : ES/RTY REJET** — spread trop stable pour mean-reversion
+
+### Etape 1b — Exploration approfondie Kalman (18 configs x 5 windows)
+
+**NQ/RTY** : 75/90 = 83% profitable. Champion $53,270 PF 1.34, L/S symetrique.
+**ES/RTY** : 23/90 = 25.6% profitable, TOUS avec biais directionnel massif (80-97% long).
+
+**DECISION DEFINITIVE : ES/RTY REJETE** — aucun edge mean-reversion, que du beta directionnel.
+**NQ/RTY continue en grid search (Kalman uniquement).**
+
+### Etape 2 — Grid Search Kalman NQ/RTY (856,800 combos)
+
+Script : `scripts/run_grid_kalman_NQ_RTY.py`
+- 7 alphas x 17 z_entry x 9 z_exit x 7 z_stop x 8 confidences x 3 profils x 5 fenetres
+- Resultat : 856,800 combos en 180s, 413,524 profitable (48.2%)
+- CSV : `output/grid_results_kalman_NQ_RTY.csv`
+
+### Etape 3 — Analyse dimensionnelle
+
+Script : `scripts/analyze_grid_NQ_RTY.py`
+
+Sweet spots identifies :
+- **Alpha** : 1.5e-7 domine PnL ($20,387 moyen), 5e-7 domine PF (2.97, peu de trades)
+- **Window** : 05:00-12:00 unanimement meilleur (PF 2.14, PnL $17,380)
+- **z_entry** : 1.8125 sweet spot (PF 2.04), zone plate 1.75-2.0
+- **z_exit** : 0.125 maximise PnL ($24k), 1.5 maximise PF (4.64) mais peu de PnL
+- **z_stop** : 3.25 domine PnL ($20,613), 2.25 domine PF (2.47)
+- **Profile** : moyen domine PF (2.38), tres_court meilleur PnL
+- **Confidence** : 75% domine PF (2.54), 50-60% meilleur PnL
+
+Difference cle vs NQ/YM : z_stop optimal 3.25 (vs 2.75 NQ/YM), z_entry plus haut (1.8125 vs 1.375).
+
+### Etape 4 — Top 5 selection + Validation IS/OOS/WF/Permutation
+
+Script : `scripts/validate_top_NQ_RTY.py`
+
+Configs testees :
+
+| Config | alpha | profil | window | ze | zx | zs | conf | Trd | WR% | PnL | PF |
+|--------|-------|--------|--------|-----|-----|-----|------|-----|-----|-----|-----|
+| K_Balanced | 1.5e-7 | moyen | 05:00-12:00 | 1.8125 | 0.125 | 3.25 | 55 | 171 | 68.4% | $91,200 | 1.75 |
+| K_Quality | 2.5e-7 | tres_court | 03:00-12:00 | 1.375 | 1.25 | 3.25 | 70 | 83 | 74.7% | $32,470 | 3.10 |
+| K_Volume | 2.5e-7 | court | 05:00-12:00 | 1.3125 | 0.25 | 3.25 | 50 | 355 | 67.0% | $88,020 | 1.32 |
+| K_Sniper | 2.5e-7 | moyen | 04:00-13:00 | 1.875 | 0.25 | 3.25 | 70 | 53 | 75.5% | $51,685 | 2.96 |
+| K_PropFirm | 2.5e-7 | tres_court | 05:00-12:00 | 1.5625 | 1.5 | 2.25 | 60 | 61 | 90.2% | $25,195 | 4.54 |
+
+**RESULTATS VALIDATION :**
+
+| Config | IS PF | OOS PF | OOS Degrad | Perm p | WF | WF PnL | Verdict |
+|--------|-------|--------|------------|--------|-----|--------|---------|
+| K_Balanced | 2.09 | 0.76 | -63.6% | 0.000 | 3/5 | $1,285 | MARGINAL |
+| K_Quality | 1.93 | 0.71 | -63.2% | 0.000 | 1/5 | -$17,455 | REJETE |
+| K_Volume | 1.48 | 0.90 | -39.2% | 0.000 | 2/5 | -$6,940 | REJETE |
+| K_Sniper | 4.02 | 0.72 | -82.1% | 0.000 | 3/5 | $12,900 | MARGINAL |
+| K_PropFirm | 2.50 | 0.67 | -73.2% | 0.000 | 3/5 | $4,590 | MARGINAL |
+
+**IS/OOS : 0/5 GO** — Toutes les configs ont PF OOS < 1.0.
+**Walk-Forward** : 3 configs atteignent 3/5 (seuil minimum), PF WF miserable (1.08-1.65).
+**Permutation** : 5/5 GO (p=0.000) — le signal est reel mais ne persiste pas OOS.
+
+**Biais directionnel** :
+- K_Balanced : 82% long **BIAS
+- K_Sniper : 82% long **BIAS
+- K_Volume : 41% long (seule config symetrique)
+- K_Quality : 73% long *bias
+- K_PropFirm : 74% long *bias
+
+**Annee 2026** : catastrophique pour la plupart des configs (-$6k a -$16k sur 2 mois).
+**Exception** : K_PropFirm a toutes les annees positives en full-sample (2021-2026), mais echoue en IS/OOS car le Kalman repart de zero.
+
+### Etape 5 — Complementarite NQ/RTY vs NQ/YM
+
+Script : `scripts/analyze_complementarity.py`
+
+| Combo | PnL total | Trading days | Losing days | Max DD daily | Sharpe daily |
+|-------|-----------|-------------|-------------|-------------|-------------|
+| NQ_YM + NQ_RTY K_Sniper | $136,510 | 264 | 23% | -$20,780 | 4.49 |
+| NQ_YM + NQ_RTY K_PropFirm | $110,020 | 260 | 21% | -$18,070 | 4.24 |
+| NQ_YM + NQ_RTY K_Volume | $172,845 | 453 | 30% | -$29,505 | 2.42 |
+
+Points cles :
+- NQ_YM et NQ_RTY K_Sniper n'ont que **9% de jours communs** — faible chevauchement
+- Correlation PnL jours communs : 0.12 (quasi nulle) — bonne diversification
+- **Seulement 2 jours de perte communs** (NQ_YM 52 losing days, K_Sniper 13 losing days)
+- 2023 reste la seule annee negative (-$2,785 avec K_Sniper), mais nettement amelioree vs NQ_YM seul
+
+NQ_YM K_Balanced seul : PnL $84,825, 35% long (excellent short bias compensant le long bias NQ_RTY)
+
+### VERDICT FINAL NQ/RTY
+
+**NQ/RTY Kalman : REJETE comme strategie standalone** — echoue IS/OOS (PF OOS < 1.0 sur 5/5 configs), biais directionnel long sur 4/5 configs, 2024+ systematiquement en perte.
+
+**NQ/RTY comme complement discretionnaire : POSSIBLE** — correlation quasi nulle avec NQ_YM, 2 jours de perte communs seulement. K_Sniper ou K_PropFirm peuvent etre affiches en Sierra comme indicateur secondaire pour les jours ou NQ_YM ne trade pas. Mais NE PAS automatiser — utiliser uniquement en overlay discretionnaire.
+
+**ES/RTY : DEFINITIVEMENT REJETE** — aucun edge mean-reversion detecte. Tous les profits proviennent du biais directionnel long (80-97%).
+
+### Scripts ajoutes Phase 9 :
+- `scripts/diagnostic_spread.py` — Diagnostics spread 3 paires
+- `scripts/explore_pairs.py` — Exploration rapide 6 OLS + 6 Kalman
+- `scripts/explore_pairs_v2.py` — Exploration approfondie 18 Kalman x 5 windows
+- `scripts/run_grid_kalman_NQ_RTY.py` — Grid search 856,800 combos
+- `scripts/analyze_grid_NQ_RTY.py` — Analyse dimensionnelle grid
+- `scripts/validate_top_NQ_RTY.py` — Validation complete top 5
+- `scripts/analyze_complementarity.py` — Complementarite cross-pair
+
+---
+
+## Phase 10 — Grid Raffine OLS NQ/RTY + Validation (2026-02-23)
+
+Objectif : affiner le grid search OLS sur NQ/RTY avec 17 profils metrics, 6 fenetres, ranges etendus. Selectionner et valider les meilleures configs.
+
+### Differences cles NQ/RTY vs NQ/YM (OLS) :
+- **Confidence weights** : HL retire du scoring (ablation : +155% trades, PnL quasi identique) → ADF 50%, Hurst 30%, Corr 20%, HL 0%
+- **Profil dominant** : p36_96 (ADF lent 36 + Hurst rapide 96) vs tres_court (NQ/YM)
+- **ZW optimal** : 20 bars (1h40) vs 30 bars (NQ/YM) — plus reactif
+- **z_entry** : 3.00-3.50 (similaire a NQ/YM 3.15)
+- **z_exit** : 0.75 (vs 1.00 NQ/YM) — sort plus tot
+- **Multipliers** : MULT_A=20 (NQ), MULT_B=50 (RTY), TICK_A=0.25, TICK_B=0.10
+
+### Etape 1 — Grid raffine (14,374,656 combos)
+
+**Script** : `scripts/refine_ols_balanced.py`
+- **OLS** : [2640, 3300, 3960, 5280, 6600, 7920, 9240]
+- **ZW** : [16, 20, 24, 28, 36, 48, 60]
+- **z_entry** : 2.75 → 3.75 (step 0.25)
+- **z_exit** : [0.25, 0.50, 0.75, 1.00, 1.25]
+- **z_stop** : [3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
+- **confidence** : [55, 60, 65, 70, 75, 80]
+- **17 profils metrics** : p12_64 a p48_128 (incluant cross-profiles p18_192, p24_256, etc.)
+- **6 fenetres** : 02:00-14:00, 04:00-14:00, 06:00-14:00, 08:00-14:00, 08:00-12:00, 06:00-12:00
+- **Resultat** : 14,374,656 backtests en ~47 min, 62,037 filtres (PnL>0, PF>1.3, trades>150)
+
+### Etape 2 — Sweet spots identifies
+
+| Dimension | Optimal | PnL moyen | PF moyen | Notes |
+|-----------|---------|-----------|----------|-------|
+| OLS | 7920-9240 (30-35j) | $10-12k | 1.80-2.05 | Plus long que NQ/YM |
+| ZW | 20 (1h40) | $9,200 | 1.82 | Plus reactif que NQ/YM |
+| Profil | p36_96 | $10,500 | 1.95 | ADF lent + Hurst rapide |
+| Window | 06:00-14:00 | $8,900 | 1.85 | Session europeenne + US |
+| z_entry | 3.00 | $9,800 | 1.78 | Zone plate 3.00-3.25 |
+| z_exit | 0.75 | $8,500 | 1.85 | Sort tot |
+| z_stop | 5.0-5.5 | $9,000 | 1.90 | Plus large que NQ/YM |
+| Confidence | 75 | $7,500 | 2.00 | Strict |
+
+### Etape 3 — MaxDD check (15 candidats diversifies)
+
+**Script** : `scripts/check_maxdd_refined_NQ_RTY.py`
+- 4/15 SAFE (MaxDD < $8,000), 2 avec MaxDD < $5,000
+- High volume (500+ trades) = systematiquement MaxDD $10k-$32k
+- Safe configs : 150-205 trades
+
+### Etape 4 — Ranking multi-criteres (78 candidats, 5 groupes)
+
+**Script** : `scripts/rank_top_configs_NQ_RTY.py`
+- 78 candidats pre-selectionnes (diversite de patterns)
+- 5 groupes : SHARPE, CALMAR, PNL, PROPFIRM, EQUILIBRE
+- **3 configs recurrentes** (apparaissent dans 3+ groupes) :
+  - A_RTY : OLS=9240, ZW=20, p36_96, 06:00-14:00
+  - B_RTY : OLS=7920, ZW=20, p36_96, 06:00-14:00
+  - C_RTY : OLS=7920, ZW=20, p42_224, 04:00-14:00
+
+### Etape 5 — Overlap analysis (10 configs)
+
+**Script** : `scripts/compare_candidates_NQ_RTY.py`
+- A_RTY vs B_RTY : **74% overlap** (quasi-identiques)
+- F_narrow : **11% overlap** avec A+B+C (le plus complementaire)
+- D_court : **20% overlap** (pattern different)
+- G_sniper : **20% overlap** (pattern different)
+- I_volume : 81% overlap → elimine (redondant)
+
+### Etape 6 — Validation complete (6 configs)
+
+**Script** : `scripts/validate_NQ_RTY_top6.py`
+
+#### 6 configs selectionnees :
+
+| Config | OLS | ZW | Profil | Window | ze | zx | zs | conf |
+|--------|-----|----|--------|--------|-----|-----|-----|------|
+| A_RTY | 9240 | 20 | p36_96 | 06:00-14:00 | 3.00 | 0.75 | 5.0 | 75 |
+| B_RTY | 7920 | 20 | p36_96 | 06:00-14:00 | 3.00 | 0.75 | 3.5 | 75 |
+| C_RTY | 7920 | 20 | p42_224 | 04:00-14:00 | 3.00 | 0.75 | 3.5 | 75 |
+| D_court | 3960 | 28 | p28_144 | 02:00-14:00 | 3.00 | 1.25 | 5.5 | 80 |
+| F_narrow | 6600 | 60 | p28_144 | 08:00-12:00 | 3.25 | 0.75 | 5.5 | 80 |
+| G_sniper | 3960 | 24 | p16_80 | 06:00-14:00 | 3.50 | 0.50 | 4.5 | 70 |
+
+#### Resultats validation (6/6 GO) :
+
+| Config | Trades | WR% | PnL | Full PF | IS PF | OOS PF | Degrad | Perm p | WF | WF PnL |
+|--------|--------|-----|-----|---------|-------|--------|--------|--------|-----|--------|
+| A_RTY | 163 | 65% | $19,205 | 2.10 | 1.61 | 3.48 | -116% | 0.000 | 5/5 | $28,530 |
+| B_RTY | 189 | 63% | $17,140 | 2.00 | 1.63 | 2.70 | -66% | 0.000 | 4/5 | $25,105 |
+| C_RTY | 205 | 62% | $17,370 | 1.98 | 1.92 | 2.34 | -22% | 0.000 | 5/5 | $17,900 |
+| D_court | 195 | 59% | $14,710 | 1.95 | 1.71 | 2.25 | -32% | 0.000 | 5/5 | $17,410 |
+| F_narrow | 87 | 68% | $9,420 | 1.91 | 2.36 | 1.78 | +25% | 0.000 | 5/5 | $9,000 |
+| G_sniper | 152 | 66% | $20,350 | 2.17 | 1.37 | 3.93 | -187% | 0.000 | 4/5 | $23,925 |
+
+Notes :
+- **5/6 configs OOS > IS** (degradation negative = OOS meilleur que IS = PAS d'overfitting)
+- F_narrow seule config avec degradation normale IS→OOS (+25%)
+- **Permutation p=0.000** pour les 6 — signal reel, non reproductible par hasard
+- **Walk-Forward** : 4 configs 5/5, 2 configs 4/5 — robustesse confirmee
+- Toutes utilisent CONF_WEIGHTS = ADF 50%, Hurst 30%, Corr 20%, HL 0%
+
+### TOP 3 configs selectionnees :
+
+**1. A_RTY** (Champion all-around)
+- OLS=9240, ZW=20, p36_96, 06:00-14:00, ze=3.00, zx=0.75, zs=5.0, conf=75
+- PF 2.10, WR 65%, $19,205, WF 5/5 ($28,530), OOS PF 3.48
+- Meilleur WF PnL, OOS exceptionnel, profil tres stable
+
+**2. G_sniper** (Meilleur PF + PnL)
+- OLS=3960, ZW=24, p16_80, 06:00-14:00, ze=3.50, zx=0.50, zs=4.5, conf=70
+- PF 2.17, WR 66%, $20,350, WF 4/5 ($23,925), OOS PF 3.93
+- Pattern unique (OLS court + z_entry haut + z_exit bas), 20% overlap avec A_RTY
+
+**3. D_court** (Volume + Diversite)
+- OLS=3960, ZW=28, p28_144, 02:00-14:00, ze=3.00, zx=1.25, zs=5.5, conf=80
+- PF 1.95, WR 59%, $14,710, WF 5/5 ($17,410), OOS PF 2.25
+- Pattern tres different (OLS court, ZW moyen, z_exit haut, conf 80), 20% overlap
+- Fenetre la plus large (02:00-14:00), capture opportunites hors heures US
+
+### Scripts ajoutes Phase 10 :
+- `scripts/refine_ols_balanced.py` — Grid raffine OLS NQ/RTY (14.4M combos)
+- `scripts/check_maxdd_refined_NQ_RTY.py` — MaxDD check top candidats
+- `scripts/rank_top_configs_NQ_RTY.py` — Ranking multi-criteres (78 candidats, 5 groupes)
+- `scripts/compare_candidates_NQ_RTY.py` — Overlap analysis (10 configs)
+- `scripts/validate_NQ_RTY_top6.py` — Validation IS/OOS + WF + Permutation (6 configs)

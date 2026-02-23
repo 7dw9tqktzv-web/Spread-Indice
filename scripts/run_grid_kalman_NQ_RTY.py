@@ -1,18 +1,19 @@
-"""Grid search Kalman v3 — definitive with entry windows + finer z steps.
+"""Grid search Kalman — NQ_RTY exploration.
 
-Based on v2 findings:
-- warmup & gap_P_mult: ZERO impact -> fixed (200, 5.0)
-- alpha sweet spot: 1e-7 to 5e-7, add 2.5e-7
-- z_entry finer (0.0625 step), range narrowed to 1.25-2.25
-- z_exit: add 0.125/0.375 intermediates
-- z_stop: finer around 2.5-3.0
-- min_confidence: add 64, 66 for transition resolution
-- NEW: entry window as grid dimension (5 windows)
-- 5 propfirm filtering profiles in report
+Adapted from run_grid_kalman_v3.py (NQ_YM definitive) for the NQ_RTY pair.
+OLS was tested on NQ_RTY and found non-viable — no OLS baseline exists for this pair.
+
+Parameters adapted based on NQ_RTY exploration results:
+- alpha_ratio: wider range, 1e-7 dominates but test 5e-8 to 5e-7
+- z_entry: same 17 values (1.25 to 2.25 step 0.0625)
+- z_exit: same 9 values
+- z_stop: same 7 values
+- min_confidence: add 55 since lower conf worked in exploration
+- entry windows: add 02:00-14:00 (tested in exploration)
 
 Usage:
-    python scripts/run_grid_kalman_v3.py --workers 10
-    python scripts/run_grid_kalman_v3.py --dry-run
+    python scripts/run_grid_kalman_NQ_RTY.py --workers 10
+    python scripts/run_grid_kalman_NQ_RTY.py --dry-run
 """
 
 import argparse
@@ -49,35 +50,35 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stdout,
 )
-log = logging.getLogger("grid_kalman_v3")
+log = logging.getLogger("grid_kalman_nq_rty")
 
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 # ──────────────────────────────────────────────────────────────────────
-# Grid v3 — definitive parameters
+# Grid parameters — NQ_RTY
 # ──────────────────────────────────────────────────────────────────────
 
-PAIR = ("NQ", "YM")
+PAIR = ("NQ", "RTY")
 
-# alpha_ratio: sweet spot 1e-7 to 5e-7, add 2.5e-7
-ALPHA_RATIOS = [1e-7, 1.5e-7, 2e-7, 2.5e-7, 3e-7, 5e-7]
+# alpha_ratio: wider range, 1e-7 dominates but test others
+ALPHA_RATIOS = [5e-8, 1e-7, 1.5e-7, 2e-7, 2.5e-7, 3e-7, 5e-7]
 
-# warmup & gap_P_mult: FIXED (zero impact confirmed in v2)
+# warmup & gap_P_mult: FIXED (zero impact confirmed)
 FIXED_WARMUP = 200
 FIXED_GAP_P_MULT = 5.0
 
-# z_entry: finer steps 0.0625 in narrowed sweet spot 1.25-2.25
+# z_entry: finer steps 0.0625 in sweet spot 1.25-2.25
 Z_ENTRIES = [1.25, 1.3125, 1.375, 1.4375, 1.5, 1.5625, 1.625, 1.6875,
              1.75, 1.8125, 1.875, 1.9375, 2.0, 2.0625, 2.125, 2.1875, 2.25]
 
-# z_exit: add 0.125/0.375 intermediates
+# z_exit: same range
 Z_EXITS = [0.0, 0.125, 0.25, 0.375, 0.50, 0.75, 1.00, 1.25, 1.50]
 
-# z_stop: finer around 2.5-3.0
+# z_stop: same range
 Z_STOPS = [2.25, 2.50, 2.625, 2.75, 2.875, 3.00, 3.25]
 
-# min_confidence: add 64, 66 for transition resolution
-MIN_CONFIDENCES = [50.0, 60.0, 63.0, 64.0, 65.0, 66.0, 67.0, 68.0, 69.0, 70.0, 75.0]
+# min_confidence: add 55 since lower conf worked in exploration
+MIN_CONFIDENCES = [50.0, 55.0, 60.0, 63.0, 65.0, 67.0, 70.0, 75.0]
 
 # metric profiles
 METRIC_PROFILES = {
@@ -87,19 +88,16 @@ METRIC_PROFILES = {
 }
 
 # Entry windows: (label, start_hour, start_min, end_hour, end_min)
+# Added 02:00-14:00 based on exploration results
 ENTRY_WINDOWS = [
+    ("02:00-14:00", 2, 0, 14, 0),
     ("03:00-12:00", 3, 0, 12, 0),
     ("04:00-12:00", 4, 0, 12, 0),
     ("04:00-13:00", 4, 0, 13, 0),
-    ("04:00-14:00", 4, 0, 14, 0),
     ("05:00-12:00", 5, 0, 12, 0),
 ]
 
-# OLS Config E baseline
-OLS_BASELINE = {
-    "trades": 176, "win_rate": 68.2, "pnl": 23215, "profit_factor": 1.86,
-    "avg_pnl_trade": 132, "avg_duration_bars": 5.9,
-}
+# NOTE: OLS was tested on NQ_RTY and found non-viable — no OLS baseline for this pair.
 
 
 def load_instruments():
@@ -112,7 +110,7 @@ def load_instruments():
 # ──────────────────────────────────────────────────────────────────────
 
 @dataclass
-class KalmanJobV3:
+class KalmanJobNQRTY:
     alpha_ratio: float
     profile_name: str
     window_label: str
@@ -125,13 +123,13 @@ class KalmanJobV3:
     tick_b: float
 
 
-def run_kalman_job_v3(job: KalmanJobV3) -> list[dict]:
+def run_kalman_job_nq_rty(job: KalmanJobNQRTY) -> list[dict]:
     """Run Kalman hedge + all signal combos for one (alpha, profile, window)."""
     try:
-        pair = SpreadPair(leg_a=Instrument.NQ, leg_b=Instrument.YM)
+        pair = SpreadPair(leg_a=Instrument.NQ, leg_b=Instrument.RTY)
         aligned = load_aligned_pair_cache(pair, "5min")
         if aligned is None:
-            return [{"error": "No cache for NQ_YM"}]
+            return [{"error": "No cache for NQ_RTY"}]
 
         px_a = aligned.df["close_a"].values
         px_b = aligned.df["close_b"].values
@@ -218,14 +216,14 @@ def run_kalman_job_v3(job: KalmanJobV3) -> list[dict]:
 # ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Grid search Kalman v3 NQ_YM (definitive)")
+    parser = argparse.ArgumentParser(description="Grid search Kalman NQ_RTY")
     parser.add_argument("--workers", type=int, default=10, help="Number of parallel workers")
     parser.add_argument("--dry-run", action="store_true", help="Show job count without running")
     args = parser.parse_args()
 
     instruments = load_instruments()
     spec_a = instruments["NQ"]
-    spec_b = instruments["YM"]
+    spec_b = instruments["RTY"]
 
     # Flat time is always 15:30 (session end)
     flat_min = 15 * 60 + 30
@@ -235,7 +233,7 @@ def main():
     for alpha, profile, (wlabel, wsh, wsm, weh, wem) in product(
         ALPHA_RATIOS, METRIC_PROFILES.keys(), ENTRY_WINDOWS
     ):
-        jobs.append(KalmanJobV3(
+        jobs.append(KalmanJobNQRTY(
             alpha_ratio=alpha,
             profile_name=profile,
             window_label=wlabel,
@@ -259,7 +257,7 @@ def main():
     combos_per_job = valid_combos * len(MIN_CONFIDENCES)
     total_backtests = len(jobs) * combos_per_job
 
-    log.info("Grid search KALMAN v3 -- NQ_YM (definitive)")
+    log.info("Grid search KALMAN -- NQ_RTY")
     log.info(f"  Jobs: {len(jobs)} ({len(ALPHA_RATIOS)} alpha x {len(METRIC_PROFILES)} profil x {len(ENTRY_WINDOWS)} window)")
     log.info(f"  Workers: {args.workers}")
     log.info(f"  Fixed: warmup={FIXED_WARMUP}, gap_P_mult={FIXED_GAP_P_MULT}")
@@ -271,7 +269,7 @@ def main():
     log.info(f"  z_stop: {Z_STOPS} ({len(Z_STOPS)} values)")
     log.info(f"  min_confidence: {MIN_CONFIDENCES} ({len(MIN_CONFIDENCES)} values)")
     log.info(f"  Entry windows: {[w[0] for w in ENTRY_WINDOWS]}")
-    log.info(f"  OLS baseline: PF {OLS_BASELINE['profit_factor']}, ${OLS_BASELINE['pnl']:,}")
+    log.info(f"  NOTE: No OLS baseline for NQ_RTY (OLS tested and found non-viable)")
 
     if args.dry_run:
         log.info("Dry run -- exiting.")
@@ -285,7 +283,7 @@ def main():
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(run_kalman_job_v3, job): job for job in jobs}
+        futures = {executor.submit(run_kalman_job_nq_rty, job): job for job in jobs}
 
         for future in as_completed(futures):
             job = futures[future]
@@ -320,7 +318,7 @@ def main():
     log.info(f"Total results: {len(all_results):,}")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = OUTPUT_DIR / "NQ_YM" / "grid_kalman_v3.csv"
+    csv_path = OUTPUT_DIR / "NQ_RTY" / "grid_kalman.csv"
 
     if all_results:
         df = pd.DataFrame(all_results)
@@ -397,12 +395,9 @@ def generate_reports(df: pd.DataFrame):
     log.info(f"[REPORT] Base filter: {len(base):,} / {len(df):,} (trades>20, pnl>0, PF>1)")
 
     log.info(f"\n{'='*130}")
-    log.info(f" OLS BASELINE: {OLS_BASELINE['trades']} trades, WR {OLS_BASELINE['win_rate']}%, "
-             f"PnL ${OLS_BASELINE['pnl']:,}, PF {OLS_BASELINE['profit_factor']}")
+    log.info(f" NQ_RTY GRID SEARCH (no OLS baseline -- OLS tested and found non-viable for this pair)")
+    log.info(f" Profitable configs: {len(base):,}")
     log.info(f"{'='*130}")
-
-    beats_pf = base[base["profit_factor"] > OLS_BASELINE["profit_factor"]]
-    log.info(f" Configs beating OLS PF: {len(beats_pf):,}")
 
     # ── Top 10 per window ──
     log.info(f"\n{'='*130}")
@@ -442,9 +437,8 @@ def generate_reports(df: pd.DataFrame):
             log.info(f"  a={alpha:.1e} -- no configs")
             continue
         best = sub.loc[sub["profit_factor"].idxmax()]
-        m = "*" if best["profit_factor"] > OLS_BASELINE["profit_factor"] else " "
         log.info(
-            f" {m}a={alpha:.1e} {best['profil']:<10} {best['window']:<12} | "
+            f"  a={alpha:.1e} {best['profil']:<10} {best['window']:<12} | "
             f"ze={best['z_entry']:.4f} zx={best['z_exit']:.3f} zs={best['z_stop']:.3f} "
             f"c={best['min_confidence']:.0f} | "
             f"Trd={best['trades']:>4} WR={best['win_rate']:.1f}% PF={best['profit_factor']:.2f} "
@@ -501,7 +495,7 @@ def generate_reports(df: pd.DataFrame):
             _print_table(top_df)
 
     # Save filtered CSV
-    csv_path = OUTPUT_DIR / "NQ_YM" / "grid_kalman_v3_filtered.csv"
+    csv_path = OUTPUT_DIR / "NQ_RTY" / "grid_kalman_filtered.csv"
     base.to_csv(csv_path, index=False)
     log.info(f"\n[OUTPUT] Filtered -> {csv_path} ({len(base):,} rows)")
 
@@ -512,9 +506,8 @@ def _print_table(df):
              f"{'Conf':>4} {'Trd':>5} {'Win%':>5} {'PnL':>10} {'PF':>5} {'Avg$':>7} {'AvgD':>5}")
     log.info("  " + "-" * 118)
     for _, r in df.iterrows():
-        m = "*" if r["profit_factor"] > OLS_BASELINE["profit_factor"] else " "
         log.info(
-            f" {m}{r['alpha_ratio']:>8.1e} {r['profil']:<10} {r['window']:<12} "
+            f"  {r['alpha_ratio']:>8.1e} {r['profil']:<10} {r['window']:<12} "
             f"{r['z_entry']:>6.4f} {r['z_exit']:>5.3f} {r['z_stop']:>5.3f} {r['min_confidence']:>4.0f} "
             f"{r['trades']:>5} {r['win_rate']:>5.1f} "
             f"${r['pnl']:>9,.0f} {r['profit_factor']:>5.2f} "

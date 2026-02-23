@@ -10,7 +10,7 @@ Re-runs top configs with full backtest engine to compute:
 
 Usage:
     python scripts/analyze_grid_results.py
-    python scripts/analyze_grid_results.py --csv output/refined_grid_results.csv --top 30
+    python scripts/analyze_grid_results.py --csv output/NQ_YM/grid_refined_ols.csv --top 30
 """
 
 import argparse
@@ -258,7 +258,7 @@ def select_diverse_top(df, criterion_col, n=5, ascending=False, min_trades=15):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", default=str(PROJECT_ROOT / "output" / "grids" / "refined_grid_results.csv"))
+    parser.add_argument("--csv", default=str(PROJECT_ROOT / "output" / "NQ_YM" / "grid_refined_ols.csv"))
     parser.add_argument("--top", type=int, default=30, help="Number of top configs to deep-analyze")
     args = parser.parse_args()
 

@@ -154,7 +154,7 @@ def main():
     print(f"Data: {len(px_a):,} bars, {years:.1f} years\n")
 
     # ── Load grid CSV ──
-    df = pd.read_csv("output/grid_results_kalman_v3_nqym_filtered.csv")
+    df = pd.read_csv("output/NQ_YM/grid_kalman_v3_filtered.csv")
     print(f"Loaded {len(df):,} filtered configs")
 
     # ── Pre-filter candidates ──

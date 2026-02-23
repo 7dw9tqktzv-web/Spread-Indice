@@ -11,6 +11,8 @@ build/
 *.dll
 *.so
 *.obj
+*.exp
+*.lib
 .claude/
 .mcp.json
 
@@ -22,8 +24,9 @@ raw/
 .vscode/
 pyrightconfig.json
 
-# Sierra templates/examples/docs
+# Sierra templates/examples/docs (exclude all except our indicators)
 sierra/*.cpp
+!sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp
 sierra/*.md
 
 # Temp
