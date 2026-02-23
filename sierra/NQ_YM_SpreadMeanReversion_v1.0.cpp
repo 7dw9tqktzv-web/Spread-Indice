@@ -1744,13 +1744,27 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         sc.UseTool(SignalBox);
 
         // ============================================================
-        // PANEL 2 — METRICS (OLS | Kalman columns)
+        // PANEL 2 — DASHBOARD (Metrics + Sizing unified)
         // ============================================================
 
-        SCString AdfTag = (adfStat < ADF_CRITICAL_5PCT) ? "Stat" : "Non-Stat";
-        SCString HurstTag = (hurst < 0.5f) ? "MR" : "Trend";
-        SCString CorrTag = (correlation >= 0.85f) ? "OK" :
-                           (correlation >= 0.65f) ? "~" : "Low";
+        // Pre-format tag strings with brackets for alignment
+        SCString AdfTagStr, HurstTagStr, CorrTagStr;
+        if (adfStat < ADF_CRITICAL_5PCT)
+            AdfTagStr = "Stat]";
+        else
+            AdfTagStr = "Non-S]";
+
+        if (hurst < 0.5f)
+            HurstTagStr = "MR]";
+        else
+            HurstTagStr = "Trnd]";
+
+        if (correlation >= 0.85f)
+            CorrTagStr = "OK]";
+        else if (correlation >= 0.65f)
+            CorrTagStr = "~]";
+        else
+            CorrTagStr = "Low]";
 
         SCString KalDir = "---";
         if (kalLong) KalDir = "Long";
@@ -1761,17 +1775,47 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         olsZStr.Format("%+.2f", zScore);
         kalZStr.Format("%+.2f  [%s]", kalZInnVal, KalDir.GetChars());
 
+        // --- Sizing calculations ---
+        float olsRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * beta;
+        int olsRoundStd = (int)(olsRatioExact + 0.5f);
+        if (olsRoundStd < 1) olsRoundStd = 1;
+
+        float kalRatioExact = 0.0f;
+        if (kalBeta > 0.0f)
+            kalRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * kalBeta;
+        int kalRoundStd = (int)(kalRatioExact + 0.5f);
+        if (kalRoundStd < 1 && kalBeta > 0.0f) kalRoundStd = 1;
+
+        float mx2OlsExact = olsRatioExact * 2.0f;
+        int mx2OlsRound = (int)(mx2OlsExact + 0.5f);
+        float mx2KalExact = kalRatioExact * 2.0f;
+        int mx2KalRound = (int)(mx2KalExact + 0.5f);
+
+        // Pre-format sizing strings (%.1f to keep lines compact)
+        SCString olsStdStr, kalStdStr, olsMx2Str, kalMx2Str;
+        olsStdStr.Format("%dYM (%.1f)", olsRoundStd, olsRatioExact);
+        kalStdStr.Format("%dYM (%.1f)", kalRoundStd, kalRatioExact);
+        olsMx2Str.Format("%dMYM(%.1f)", mx2OlsRound, mx2OlsExact);
+        kalMx2Str.Format("%dMYM(%.1f)", mx2KalRound, mx2KalExact);
+
         SCString DashText;
         DashText.Format(
-            "                    OLS                 KALMAN\n"
-            "  Beta              %-20.4f%.4f\n"
-            "  Z                 %-20s%s\n"
-            "  ADF: %.2f [%s]   Hurst: %.2f [%s]   HL: %.0f\n"
-            "  Corr: %.2f [%s]   Conf: %.0f%%",
+            "            OLS         KALMAN\n"
+            "  Beta      %-12.4f%.4f\n"
+            "  Z         %-12s%s\n"
+            "  ------------------------------------\n"
+            "  ADF %.2f [%-7sHurst %.2f [%-5sHL:%.0f\n"
+            "  Corr %.2f [%-7sConf: %.0f%%\n"
+            "  ------------------------------------\n"
+            "  Std 1NQ / %-12s%s\n"
+            "  Mx2 2MNQ/ %-12s%s",
             beta, kalBeta,
             olsZStr.GetChars(), kalZStr.GetChars(),
-            adfStat, AdfTag.GetChars(), hurst, HurstTag.GetChars(), halfLife,
-            correlation, CorrTag.GetChars(), confidence
+            adfStat, AdfTagStr.GetChars(),
+            hurst, HurstTagStr.GetChars(), halfLife,
+            correlation, CorrTagStr.GetChars(), confidence,
+            olsStdStr.GetChars(), kalStdStr.GetChars(),
+            olsMx2Str.GetChars(), kalMx2Str.GetChars()
         );
 
         // Confidence gradient background
@@ -1807,98 +1851,45 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         sc.UseTool(DashBox);
 
         // ============================================================
-        // PANEL 3 — SIZING (exact + rounded, OLS | Kalman columns)
+        // PANEL 3 — TRADING (compact 2-line, Phase 2b)
         // ============================================================
 
-        // OLS sizing: N_YM = (NQ_not / YM_not) * beta_ols
-        float olsRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * beta;
-        int olsRoundStd = (int)(olsRatioExact + 0.5f);
-        if (olsRoundStd < 1) olsRoundStd = 1;
-
-        // Kalman sizing: N_YM = (NQ_not / YM_not) * beta_kalman
-        float kalRatioExact = 0.0f;
-        if (kalBeta > 0.0f)
-            kalRatioExact = (NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER) * kalBeta;
-        int kalRoundStd = (int)(kalRatioExact + 0.5f);
-        if (kalRoundStd < 1 && kalBeta > 0.0f) kalRoundStd = 1;
-
-        // Micro x2: 2 MNQ -> 2*ratio MYM (better granularity)
-        float mx2OlsExact = olsRatioExact * 2.0f;
-        int mx2OlsRound = (int)(mx2OlsExact + 0.5f);
-        float mx2KalExact = kalRatioExact * 2.0f;
-        int mx2KalRound = (int)(mx2KalExact + 0.5f);
-
-        // Micro x3: 3 MNQ -> 3*ratio MYM (even better granularity)
-        float mx3OlsExact = olsRatioExact * 3.0f;
-        int mx3OlsRound = (int)(mx3OlsExact + 0.5f);
-        float mx3KalExact = kalRatioExact * 3.0f;
-        int mx3KalRound = (int)(mx3KalExact + 0.5f);
-
-        // Notionals
-        float notNQ = NQClose * NQ_MULTIPLIER;
-        float notYM = YMClose * YM_MULTIPLIER;
-
-        // Pre-format sizing columns for alignment
-        SCString olsStdStr, kalStdStr, olsMx2Str, kalMx2Str, olsMx3Str, kalMx3Str;
-        olsStdStr.Format("%d YM (%.2f)", olsRoundStd, olsRatioExact);
-        kalStdStr.Format("%d YM (%.2f)", kalRoundStd, kalRatioExact);
-        olsMx2Str.Format("%d MYM (%.2f)", mx2OlsRound, mx2OlsExact);
-        kalMx2Str.Format("%d MYM (%.2f)", mx2KalRound, mx2KalExact);
-        olsMx3Str.Format("%d MYM (%.2f)", mx3OlsRound, mx3OlsExact);
-        kalMx3Str.Format("%d MYM (%.2f)", mx3KalRound, mx3KalExact);
-
-        SCString SizingText;
-        SizingText.Format(
-            "  SIZING            OLS                 KALMAN\n"
-            "  Std   1 NQ  /     %-20s%s\n"
-            "  Mx2   2 MNQ /     %-20s%s\n"
-            "  Mx3   3 MNQ /     %-20s%s\n"
-            "  Not: NQ $%.0f   YM $%.0f",
-            olsStdStr.GetChars(), kalStdStr.GetChars(),
-            olsMx2Str.GetChars(), kalMx2Str.GetChars(),
-            olsMx3Str.GetChars(), kalMx3Str.GetChars(),
-            notNQ, notYM
-        );
-
-        s_UseTool SizingBox;
-        SizingBox.Clear();
-        SizingBox.ChartNumber = sc.ChartNumber;
-        SizingBox.DrawingType = DRAWING_TEXT;
-        SizingBox.LineNumber = 10003;
-        SizingBox.BeginDateTime = 5;
-        SizingBox.BeginValue = 55;
-        SizingBox.UseRelativeVerticalValues = 1;
-        SizingBox.Region = sc.GraphRegion;
-        SizingBox.Text = SizingText;
-        SizingBox.FontSize = 8;
-        SizingBox.FontBold = 0;
-        SizingBox.Color = RGB(170, 180, 200);
-        SizingBox.FontBackColor = RGB(25, 25, 35);
-        SizingBox.TransparentLabelBackground = 0;
-        SizingBox.TextAlignment = DT_LEFT;
-        SizingBox.AddMethod = UTAM_ADD_OR_ADJUST;
-        sc.UseTool(SizingBox);
-
-        // ============================================================
-        // PANEL 4 — TRADING STATUS (Phase 2b)
-        // ============================================================
-
-        // Read trading params for display
-        SCString leg1SymDisp = InLeg1Symbol.GetString();
-        SCString leg2SymDisp = InLeg2Symbol.GetString();
+        // Read trading params
+        SCString leg1SymFull = InLeg1Symbol.GetString();
+        SCString leg2SymFull = InLeg2Symbol.GetString();
         int leg1QtyDisp = InLeg1Qty.GetInt();
         int leg2QtyDisp = InLeg2Qty.GetInt();
         float tradingZExitDisp = InTradingZExit.GetFloat();
         float dollarStopDisp = InDollarStop.GetFloat();
         bool autoExitDisp = (InEnableAutoExit.GetYesNo() != 0);
 
+        // Abbreviate symbols: "MNQH26_FUT_CME" -> "MNQ", "MYMH26_FUT_CME" -> "MYM"
+        // Strip month code (single letter before first digit: F,G,H,J,K,M,N,Q,U,V,X,Z)
+        SCString leg1Short, leg2Short;
+        {
+            char buf[16];
+            const char* s1 = leg1SymFull.GetChars();
+            int len1 = 0;
+            while (s1[len1] && !isdigit((unsigned char)s1[len1]) && len1 < 15) len1++;
+            if (len1 > 1) len1--; // strip month code letter
+            if (len1 > 0) { memcpy(buf, s1, len1); buf[len1] = '\0'; leg1Short = buf; }
+            else leg1Short = leg1SymFull;
+
+            const char* s2 = leg2SymFull.GetChars();
+            int len2 = 0;
+            while (s2[len2] && !isdigit((unsigned char)s2[len2]) && len2 < 15) len2++;
+            if (len2 > 1) len2--; // strip month code letter
+            if (len2 > 0) { memcpy(buf, s2, len2); buf[len2] = '\0'; leg2Short = buf; }
+            else leg2Short = leg2SymFull;
+        }
+
         // Get live P&L if in position
         double dispPnL = 0.0;
         if (TradingPosition != 0)
         {
             s_SCPositionData L1P, L2P;
-            sc.GetTradePositionForSymbolAndAccount(L1P, leg1SymDisp, sc.SelectedTradeAccount);
-            sc.GetTradePositionForSymbolAndAccount(L2P, leg2SymDisp, sc.SelectedTradeAccount);
+            sc.GetTradePositionForSymbolAndAccount(L1P, leg1SymFull, sc.SelectedTradeAccount);
+            sc.GetTradePositionForSymbolAndAccount(L2P, leg2SymFull, sc.SelectedTradeAccount);
             dispPnL = L1P.OpenProfitLoss + L2P.OpenProfitLoss;
         }
 
@@ -1908,12 +1899,11 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         if (TradingPosition == 0)
         {
             TradingText.Format(
-                "  TRADING  [FLAT]   Auto Exit: %s\n"
-                "  Leg1: %s x%d   |   Leg2: %s x%d\n"
-                "  Z Exit: %.2f   Dollar Stop: $%.0f",
+                "  TRADING [FLAT]   Auto Exit: %s\n"
+                "  %s x%d | %s x%d | Z Exit: %.2f | $Stop: %.0f",
                 autoExitDisp ? "ON" : "OFF",
-                leg1SymDisp.GetChars(), leg1QtyDisp,
-                leg2SymDisp.GetChars(), leg2QtyDisp,
+                leg1Short.GetChars(), leg1QtyDisp,
+                leg2Short.GetChars(), leg2QtyDisp,
                 tradingZExitDisp, dollarStopDisp
             );
             tradeBg = RGB(40, 40, 50);
@@ -1923,13 +1913,18 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
             const char* posLabel = (TradingPosition == 1) ? "LONG SPREAD" : "SHORT SPREAD";
             int barsInTrade = sc.Index - EntryBarIndex;
 
+            // P&L with explicit sign
+            SCString pnlStr;
+            if (dispPnL >= 0.0)
+                pnlStr.Format("+$%.0f", dispPnL);
+            else
+                pnlStr.Format("-$%.0f", fabs(dispPnL));
+
             TradingText.Format(
-                "  TRADING  [%s]   Bars: %d\n"
-                "  P&L: $%.0f   |   Entry Z: %.2f\n"
-                "  Z now: %+.2f   Z exit: %.2f   $Stop: -$%.0f",
-                posLabel, barsInTrade,
-                dispPnL, (float)EntrySpreadZ,
-                zScore, tradingZExitDisp, dollarStopDisp
+                "  TRADING [%s]  Bars: %d  P&L: %s\n"
+                "  Entry Z: %.2f | Z now: %+.2f | $Stop: -$%.0f",
+                posLabel, barsInTrade, pnlStr.GetChars(),
+                (float)EntrySpreadZ, zScore, dollarStopDisp
             );
 
             if (dispPnL > 0.0)
@@ -1944,9 +1939,9 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         TradeBox.Clear();
         TradeBox.ChartNumber = sc.ChartNumber;
         TradeBox.DrawingType = DRAWING_TEXT;
-        TradeBox.LineNumber = 10004;
+        TradeBox.LineNumber = 10003;
         TradeBox.BeginDateTime = 5;
-        TradeBox.BeginValue = 25;
+        TradeBox.BeginValue = 35;
         TradeBox.UseRelativeVerticalValues = 1;
         TradeBox.Region = sc.GraphRegion;
         TradeBox.Text = TradingText;
