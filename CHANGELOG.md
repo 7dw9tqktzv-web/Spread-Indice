@@ -656,3 +656,130 @@ Notes :
 - `scripts/rank_top_configs_NQ_RTY.py` — Ranking multi-criteres (78 candidats, 5 groupes)
 - `scripts/compare_candidates_NQ_RTY.py` — Overlap analysis (10 configs)
 - `scripts/validate_NQ_RTY_top6.py` — Validation IS/OOS + WF + Permutation (6 configs)
+
+---
+
+## Phase 11 — Deep Validation NQ/RTY OLS (7 etapes) — 2026-02-23
+
+Objectif : pipeline de validation approfondie sur les configs NQ/RTY OLS retenues en Phase 10. 7 etapes : ablation, grid re-analyse, selection parametrique, time stop, validation complete, autopsie, micro/propfirm.
+
+### Etape 1 — Ablation (HL weight)
+
+Confirmation : retrait du poids HL dans confidence scoring (ADF 50%, Hurst 30%, Corr 20%, HL 0%) augmente trades +155% sans degrader PnL.
+
+### Etape 2 — Grid re-analyse + MaxDD
+
+Re-analyse du grid Phase 10 (62k configs filtrees) avec scoring multi-criteres. Ajout tier classification :
+- **SAFE** : MaxDD < $5,000 (propfirm compatible)
+- **WARN** : MaxDD $5,000-$7,000
+- **DANGER** : MaxDD > $7,000
+
+### Etape 3 — Selection parametrique (10 configs)
+
+**Script** : `scripts/step3_maxdd_overlap_NQ_RTY.py`
+
+Remplacement du filtre overlap (50% trading-day overlap trop agressif → n'eliminait tout sauf 4 DANGER) par selection a diversite parametrique :
+- Score = 60% base_score + 40% diversity_bonus
+- Diversite = distance parametrique sur 8 dimensions (OLS, ZW, profile, window, z_entry, z_exit, z_stop, conf)
+- MaxDD weight augmente de 15% a 25%
+- Resultat algorithmique : 8 configs (0 SAFE, 2 WARN, 6 DANGER) — SAFE trop similaires au WARN #27
+- Ajout manuel de 2 SAFE (#8 et #6) → **10 configs finales**
+
+| Tier | Configs | Labels |
+|------|---------|--------|
+| SAFE (2) | MaxDD -$4,605 | #8 (06:00-14:00), #6 (04:00-14:00) |
+| WARN (2) | MaxDD -$5,410 to -$5,790 | #27, #23 |
+| DANGER (6) | MaxDD -$5,115 to -$14,030 | #2, #21, #10, #12, #1, #32 |
+
+### Etape 4 — Time Stop + Hourly Deep-Dive
+
+**Script** : `scripts/step4_timestop_hourly_NQ_RTY.py`
+
+6 valeurs de time stop testees (off, 60min, 90min, 120min, 180min, 240min) + decomposition PnL par heure d'entree CT.
+
+#### Resultats cles :
+
+| Config | Best time stop | Impact |
+|--------|---------------|--------|
+| #8, #6 (SAFE) | **off** | Trades deja courts (avg 7.1 bars = 35min), time stop inutile |
+| **#2 (DANGER)** | **60min** | **PF 2.08→2.37, MaxDD -$8,435→-$5,115** (DANGER→quasi-WARN) |
+| #23 (WARN) | 90min | PF 2.15→2.23 (leger) |
+| #21 (DANGER) | 90min | PF 1.77→1.80, MaxDD -$10,020→-$9,000 (leger) |
+| Autres | off | Aucune amelioration |
+
+**Pattern horaire universel** : 7h-8h CT = money hours (70-80% PnL). 6h CT = TOXIC (perdant).
+
+### Etape 5 — Validation Complete (IS/OOS + Permutation + Walk-Forward)
+
+**Script** : `scripts/step5_validate_NQ_RTY.py`
+
+IS/OOS 60/40, Permutation 1000x, Walk-Forward IS=2y OOS=6m step=6m. Time stops de l'etape 4 appliques.
+
+#### Resultats : **10/10 GO**
+
+| Config | Tier | TS | Trades | WR% | PnL | PF | MaxDD | IS PF | OOS PF | Perm | WF | Neg years |
+|--------|------|----|--------|-----|-----|----|-------|-------|--------|------|----|-----------|
+| #8 | SAFE | off | 182 | 70.9% | $40,730 | 2.10 | -$4,605 | 1.61 | 3.48 | 0.000 | 5/5 | 2026 |
+| #6 | SAFE | off | 199 | 70.4% | $41,500 | 2.08 | -$4,605 | 1.61 | 3.34 | 0.000 | 5/5 | 2026 |
+| #27 | WARN | off | 198 | 67.7% | $42,330 | 2.01 | -$5,410 | 1.62 | 2.71 | 0.000 | 4/5 | — |
+| #23 | WARN | 18b | 160 | 70.6% | $40,445 | 2.23 | -$5,790 | 1.97 | 2.72 | 0.000 | 5/5 | 2026 |
+| #2 | DANGER | 12b | 181 | 72.4% | $40,305 | 2.37 | -$5,115 | 2.14 | 2.66 | 0.000 | 5/5 | 2026 |
+| #21 | DANGER | 18b | 341 | 65.7% | $64,670 | 1.80 | -$9,000 | 1.47 | 2.30 | 0.000 | 5/5 | — |
+| #10 | DANGER | off | 164 | 68.9% | $40,955 | 2.17 | -$8,045 | 1.56 | 5.20 | 0.000 | 5/5 | — |
+| #12 | DANGER | off | 305 | 71.1% | $54,465 | 1.66 | -$13,925 | 1.36 | 2.10 | 0.000 | 3/5 | 2021 |
+| #1 | DANGER | off | 413 | 68.0% | $65,255 | 1.61 | -$11,875 | 1.12 | 2.67 | 0.000 | 5/5 | 2021 |
+| #32 | DANGER | off | 307 | 70.7% | $53,155 | 1.61 | -$14,030 | 1.37 | 1.90 | 0.000 | 4/5 | 2021 |
+
+Notes :
+- **10/10 OOS PF > IS PF** — pas d'overfitting, periode recente (2024-2026) tres favorable
+- **Permutation p=0.000** pour les 10 — signal reel
+- Walk-Forward 3/5 a 5/5 — robustesse confirmee
+
+### Etape 6 — Autopsie des annees faibles
+
+**Script** : `scripts/step6_autopsy_NQ_RTY.py`
+
+#### Annees negatives par config :
+
+| Annee | Configs touchees | Pattern |
+|-------|-----------------|---------|
+| 2021 | #32 (-$16K), #10 (-$12K), #1 (-$1.1K) | Regime post-COVID, divergence NQ/RTY |
+| 2023 | 6 configs negatives | Annee universellement faible, Jan+Aug toxiques |
+| 2024 | **#10 catastrophe cachee** (-$27K) | Single trade 2024-12-18 perd -$32,938 |
+| 2026 | 4 configs negatives (2 mois seulement) | Trop tot pour juger |
+
+**SAFE configs (#8, #6)** : annees negatives tres legeres — 2023 max -$792 seulement.
+
+**Config #10 alerte** : step3 montrait 0 neg years (masque par recuperation intra-annee), mais autopsie revele un trade catastrophique unique en Dec 2024. Profil a risque malgre stats globales flatteuses.
+
+### Etape 7 — Micro Contracts + Propfirm
+
+**Script** : `scripts/step7_micro_propfirm_NQ_RTY.py`
+
+#### CRITICAL : Micro NON viable pour NQ/RTY
+
+| Config | Size | Trades | PF | PnL | MaxDD | $/jour | Status |
+|--------|------|--------|-----|-----|-------|--------|--------|
+| #8 | E-mini | 182 | 2.10 | $40,730 | -$4,605 | $31 | WARN |
+| #8 | Mx1 | 182 | 1.26 | $1,214 | -$832 | $1 | SAFE |
+| #8 | Mx2 | 182 | **0.70** | **-$2,965** | -$4,520 | -$2 | WARN |
+| #6 | E-mini | 199 | 2.08 | $41,500 | -$4,605 | $32 | WARN |
+| #6 | Mx1 | 199 | 1.21 | $1,055 | -$851 | $1 | SAFE |
+| #6 | Mx2 | 199 | **0.65** | **-$3,602** | -$4,862 | -$3 | WARN |
+
+**Toutes les configs Mx2 ont PF < 1.0 (perdantes).** Commission $2.48 (Mx1) a $4.96 (Mx2) par RT est disproportionnee vs PnL micro NQ/RTY. Contrairement a NQ/YM Kalman (Mx2 PF 1.67, viable), le PnL/trade NQ/RTY OLS est trop faible pour absorber les commissions micro.
+
+**Decision : NQ/RTY = E-mini only.** SAFE configs #8/#6 a MaxDD -$4,605 (92% du trailing DD $5K propfirm).
+
+### Configs production retenues :
+
+**#8 (principale)** : OLS=9240, ZW=20, p36_96, 06:00-14:00, ze=3.00, zx=0.75, zs=5.0, conf=75, ts=off
+**#6 (wide window)** : OLS=9240, ZW=20, p36_96, 04:00-14:00, ze=3.00, zx=0.75, zs=5.5, conf=75, ts=off
+**#2 (backup)** : OLS=9240, ZW=32, p48_128, 02:00-14:00, ze=3.25, zx=0.75, zs=5.5, conf=80, ts=12 bars
+
+### Scripts ajoutes Phase 11 :
+- `scripts/step3_maxdd_overlap_NQ_RTY.py` — Selection parametrique + diversite
+- `scripts/step4_timestop_hourly_NQ_RTY.py` — Time stop + hourly deep-dive
+- `scripts/step5_validate_NQ_RTY.py` — Validation complete IS/OOS + WF + Permutation
+- `scripts/step6_autopsy_NQ_RTY.py` — Autopsie annees faibles
+- `scripts/step7_micro_propfirm_NQ_RTY.py` — Micro contracts + propfirm check
