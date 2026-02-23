@@ -23,7 +23,8 @@ Scripts a executer depuis la racine (cache = `output/cache`). Raw data (`raw/*.t
 
 ### Implementation Status
 Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (4 YAML), 40 scripts, 62 tests. Stubs : `src/optimisation/`.
-Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (~1480 lignes) -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
+Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
+Phase 2b v1 C++ : meme fichier (~1930 lignes) -- semi-auto trading (BUY/SELL/FLATTEN + auto-exits). Teste en simulation.
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread/builder` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
@@ -80,7 +81,14 @@ Fichier : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (~1480 lignes). DLL 64-bit
 Gap detection via GetDate()/GetTimeInSeconds() absolus (gere weekends/holidays).
 Parite signaux C++/Python : **99.9%**. Metriques brutes : Spread r=0.996, Z-Score r=0.974, Beta OLS r=0.971.
 Compilation : `F:\SierreChart_Spread_Indices\ACS_Source\VisualCCompile.Bat` -> `Data\NQ_YM_SpreadMeanReversion_64.dll`.
-Phase 2b a venir : auto-trading, dollar stop, regime indicator.
+
+## Phase 2b v1 -- Semi-Auto Trading NQ_YM (VALIDE)
+Fichier : meme cpp (~1930 lignes). Inputs 22-31, PersistentInt 4-6, PersistentDouble 8-9.
+**Trading** : BUY SPREAD / SELL SPREAD / FLATTEN via Input dropdown. 2 jambes simultanees (MNQ + MYM).
+**Auto-exits** : z_exit, dollar stop ($), time stop (CT). Tous configurables via Inputs. Enable Auto Exit toggle.
+**Panel 4 TRADING** : position, P&L live, stops actifs. Couleur verte/rouge/grise selon P&L.
+**Architecture ordres** : `sc.BuyOrder()` / `sc.SellOrder()` avec `.Symbol` explicite (cross-symbol). Deferred order pattern via `PendingOrderAction` (PersistentInt 6) pour eviter -8998 pendant full recalc.
+**Teste en simulation** : BUY/SELL/FLATTEN valides sur Teton CME Routing (Sim1).
 
 ## Key Conventions
 - Toujours travailler en **venv**
