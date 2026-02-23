@@ -23,7 +23,7 @@ Scripts a executer depuis la racine (cache = `output/cache`). Raw data (`raw/*.t
 
 ### Implementation Status
 Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (4 YAML), 40 scripts, 62 tests. Stubs : `src/optimisation/`.
-Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (1537 lignes) -- indicateur visuel valide.
+Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (1537 lignes) -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread/builder` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
@@ -69,10 +69,10 @@ Dependencies flow strictly downward. Config YAML loaded at script level, injecte
 Lire `CHANGELOG.md` en debut de session. Verifier avant de proposer un test.
 
 ## Instruments & Pairs
-6 instruments (NQ, ES, RTY, YM + MNQ, MYM). Paires viables : NQ/YM (OLS+Kalman), NQ/RTY (OLS valide, Kalman en cours). Rejetees : NQ/ES, ES/RTY, ES/YM, RTY/YM. Micros : 1/10e standard, commission $0.62 RT.
+6 instruments (NQ, ES, RTY, YM + MNQ, MYM). Paires viables : NQ/YM (OLS+Kalman), NQ/RTY (OLS+Kalman). Rejetees : NQ/ES, ES/RTY, ES/YM, RTY/YM. Micros : 1/10e standard, commission $0.62 RT.
 
 ## Configs Validees
-Voir MEMORY.md pour les parametres et resultats detailles de chaque config (Config E, K_Balanced, NQ_RTY Top 3).
+Voir MEMORY.md pour les parametres et resultats detailles de chaque config (Config E, K_Balanced, NQ_RTY Top 3 OLS, NQ_RTY Kalman textbox).
 
 ## Phase 2a -- Sierra NQ_YM (VALIDE)
 Fichier : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (1537 lignes). DLL 64-bit, VS 2022 Build Tools.

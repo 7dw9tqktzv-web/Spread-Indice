@@ -1,7 +1,7 @@
 # CHANGELOG — Recherche Backtest Spread Indice
 
 Historique chronologique des tests, resultats et decisions.
-Derniere mise a jour : 2026-02-23
+Derniere mise a jour : 2026-02-24
 
 ---
 
@@ -783,3 +783,93 @@ Notes :
 - `scripts/step5_validate_NQ_RTY.py` — Validation complete IS/OOS + WF + Permutation
 - `scripts/step6_autopsy_NQ_RTY.py` — Autopsie annees faibles
 - `scripts/step7_micro_propfirm_NQ_RTY.py` — Micro contracts + propfirm check
+
+---
+
+## Phase 12 — Grid Kalman v2 NQ/RTY + Validation Textbox (2026-02-23)
+
+Objectif : trouver une config Kalman NQ/RTY pour la textbox Sierra (biais discretionnaire), equivalente a K_Balanced pour NQ/YM.
+
+### Root cause echec Phase 9
+
+La Phase 9 (856,800 combos) utilisait `ConfidenceConfig()` par defaut = **poids NQ_YM** (ADF 40%, Hurst 25%, Corr 20%, **HL 15%**). L'ablation Phase 11 avait montre que NQ/RTY necessite ADF 50%, Hurst 30%, Corr 20%, **HL 0%** (+155% trades, PnL identique). Le HL a 15% donnait de la fausse confiance.
+
+Les signaux du grid Phase 9 etaient contamines a la source — les 0/5 GO n'etaient PAS un echec du Kalman NQ/RTY, mais un echec du confidence scoring.
+
+### Grid Kalman v2 (290,304 combos, 5min)
+
+**Script** : `scripts/grid_kalman_v2_NQ_RTY.py --workers 10`
+
+Parametres :
+- **Poids corrects** : ADF 50%, Hurst 30%, Corr 20%, HL 0%
+- Alpha : [1e-7, 1.5e-7, 2e-7, 2.5e-7, 3e-7, 5e-7]
+- z_entry : 1.25 -> 2.25 step 0.125 (9 valeurs)
+- z_exit : [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
+- z_stop : [2.25, 2.5, 2.75, 3.0, 3.25]
+- Confidence : [50, 55, 60, 65, 70, 75]
+- **7 profils** : tres_court, p16_80, court, p28_144, p36_96, moyen, p48_128
+- **4 fenetres** : 03:00-12:00, 04:00-13:00, 05:00-12:00, 06:00-14:00
+- **Resultat** : 290,304 combos en 295s, **101,846 profitable** (35%)
+
+### Sweet spots Kalman v2 NQ/RTY
+
+| Dimension | Optimal | Notes |
+|-----------|---------|-------|
+| Alpha | 1.5e-7 (PnL), 2.5-3e-7 (PF) | 3e-7 domine les configs sniper |
+| Window | 05:00-12:00 (PF 1.40) et 06:00-14:00 (PnL) | |
+| z_entry | 1.75-1.875 (PF 1.40) | Zone plate |
+| z_exit | 1.5 (PF 1.70) et 0.0 (PF 1.60) | Bimodal |
+| z_stop | 3.0-3.25 (PnL + volume) | |
+| Profil | court (PF 1.40), p36_96 (PF 1.40) | |
+| Confidence | 60 (meilleur compromis) | |
+
+### Full analysis top 16 (L/S + yearly + IS/OOS)
+
+2 familles identifiees :
+- **Sniper (a=3e-7, zx=1.5)** : 38-62 trades, PF 5-18, WR 83-93%, MaxDD $3.5-5.2K
+- **Volume (a=2e-7, zx=0.25)** : 400+ trades, PF 1.28-1.30, L/S 47-48%, MaxDD $22-28K
+
+**16/16 IS/OOS GO** (vs 0/5 Phase 9). **9/16 L/S symetriques** (35-65%).
+
+### Validation complete (7 configs, trades>=50, MaxDD>-$5K)
+
+**Script** : `scripts/validate_kalman_v2_NQ_RTY.py`
+
+IS/OOS 60/40, Walk-Forward IS=2y OOS=6m step=6m, Permutation 1000x.
+
+#### Resultats : **7/7 GO**
+
+| Config | Profil | Window | Trd | WR | PF | MaxDD | L/S | IS PF | OOS PF | WF | Perm |
+|--------|--------|--------|-----|-----|-----|-------|------|-------|--------|-----|------|
+| **K4_tc** | tres_court | 05:00-12:00 | 51 | 86.3% | 5.07 | -$3,715 | 63% | 2.48 | 22.89 | **6/6** | 0.000 |
+| **K1_p16_80** | p16_80 | 05:00-12:00 | 54 | 85.2% | 8.03 | -$3,585 | 65% | 4.52 | 17.89 | 5/6 | 0.000 |
+| K2_c55 | p16_80 | 05:00-12:00 | 61 | 83.6% | 5.52 | -$4,855 | 62% | 2.60 | 19.35 | 5/6 | 0.000 |
+| K3_s325 | p16_80 | 05:00-12:00 | 55 | 83.6% | 7.47 | -$3,585 | 66% | 4.52 | 13.92 | 5/6 | 0.000 |
+| K5_p36 | p36_96 | 04:00-13:00 | 59 | 86.4% | 8.07 | -$3,585 | 68% | 3.03 | 31.45 | 3/6 | 0.000 |
+| K6_p36 | p36_96 | 04:00-13:00 | 62 | 83.9% | 6.66 | -$3,585 | 69% | 3.18 | 13.73 | 3/6 | 0.000 |
+| K7_p36 | p36_96 | 04:00-13:00 | 58 | 86.2% | 7.55 | -$3,585 | 67% | 3.03 | 28.54 | 3/6 | 0.000 |
+
+#### Yearly K4_tc (champion, 0 neg years) :
+2021: $2,455 (3t) | 2022: $6,220 (10t) | 2023: $840 (15t) | 2024: $10,180 (11t) | 2025: $6,515 (8t) | 2026: $3,880 (4t)
+
+#### Yearly K1_p16_80 (runner-up, 0 neg years) :
+2021: $955 (2t) | 2022: $7,285 (12t) | 2023: $3,025 (14t) | 2024: $9,575 (9t) | 2025: $5,380 (12t) | 2026: $4,300 (5t)
+
+### Configs textbox retenues :
+
+**K4_tc (champion)** : alpha=3e-7, tres_court, 05:00-12:00, ze=1.75, zx=1.5, zs=3.0, conf=60
+- WF 6/6 (seul), L/S 63%/37%, 0 neg years, profil tres_court = plus reactif
+
+**K1_p16_80 (runner-up)** : alpha=3e-7, p16_80, 05:00-12:00, ze=1.625, zx=1.5, zs=3.0, conf=60
+- PF 8.03, WF 5/6, yearly tres stable, 0 neg years
+
+### Lecons Phase 12 :
+
+1. **Poids confidence pair-specific = critique**. `ConfidenceConfig()` default = NQ_YM. Toujours passer les poids explicitement pour NQ_RTY.
+2. **z_exit=1.5 = regime NQ_RTY Kalman**. Exit quasi au seuil d'entree = trades tres courts, tres fiables.
+3. **Profils p36_96 ont biais L/S plus fort** (67-69%) et WF plus faible (3/6) que tres_court/p16_80.
+4. **Kalman NQ/RTY valide pour textbox** mais pas standalone trading (~10 trades/an).
+
+### Scripts ajoutes Phase 12 :
+- `scripts/grid_kalman_v2_NQ_RTY.py` — Grid Kalman v2 (290K combos, poids corrects)
+- `scripts/validate_kalman_v2_NQ_RTY.py` — Validation complete 7 configs
