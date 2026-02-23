@@ -1744,16 +1744,8 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         sc.UseTool(SignalBox);
 
         // ============================================================
-        // PANEL 2 — DASHBOARD (metrics + sizing + Kalman)
+        // PANEL 2 — METRICS (OLS | Kalman columns)
         // ============================================================
-
-        // Sizing: dollar-neutral
-        int N_NQ = 1;
-        int N_YM = 0;
-        if (YMClose > 0.0f)
-            N_YM = (int)(((NQClose * NQ_MULTIPLIER) / (YMClose * YM_MULTIPLIER))
-                         * beta * N_NQ + 0.5f);
-        if (N_YM < 1) N_YM = 1;
 
         SCString AdfTag = (adfStat < ADF_CRITICAL_5PCT) ? "Stat" : "Non-Stat";
         SCString HurstTag = (hurst < 0.5f) ? "MR" : "Trend";
@@ -1764,16 +1756,22 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         if (kalLong) KalDir = "Long";
         else if (kalShort) KalDir = "Short";
 
+        // Pre-format Z strings for column alignment
+        SCString olsZStr, kalZStr;
+        olsZStr.Format("%+.2f", zScore);
+        kalZStr.Format("%+.2f  [%s]", kalZInnVal, KalDir.GetChars());
+
         SCString DashText;
         DashText.Format(
-            "  NQ x%d  /  YM x%d       Beta: %.4f\n"
+            "                    OLS                 KALMAN\n"
+            "  Beta              %-20.4f%.4f\n"
+            "  Z                 %-20s%s\n"
             "  ADF: %.2f [%s]   Hurst: %.2f [%s]   HL: %.0f\n"
-            "  Corr: %.2f [%s]   Conf: %.0f%%\n"
-            "  Kalman   Beta: %.4f   Z: %+.2f   Dir: %s",
-            N_NQ, N_YM, beta,
+            "  Corr: %.2f [%s]   Conf: %.0f%%",
+            beta, kalBeta,
+            olsZStr.GetChars(), kalZStr.GetChars(),
             adfStat, AdfTag.GetChars(), hurst, HurstTag.GetChars(), halfLife,
-            correlation, CorrTag.GetChars(), confidence,
-            kalBeta, kalZInnVal, KalDir.GetChars()
+            correlation, CorrTag.GetChars(), confidence
         );
 
         // Confidence gradient background
@@ -1795,7 +1793,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         DashBox.DrawingType = DRAWING_TEXT;
         DashBox.LineNumber = 10002;
         DashBox.BeginDateTime = 5;
-        DashBox.BeginValue = 78;
+        DashBox.BeginValue = 80;
         DashBox.UseRelativeVerticalValues = 1;
         DashBox.Region = sc.GraphRegion;
         DashBox.Text = DashText;
@@ -1809,7 +1807,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         sc.UseTool(DashBox);
 
         // ============================================================
-        // PANEL 3 — SIZING (exact ratios, standard + micro)
+        // PANEL 3 — SIZING (exact + rounded, OLS | Kalman columns)
         // ============================================================
 
         // OLS sizing: N_YM = (NQ_not / YM_not) * beta_ols
@@ -1824,26 +1822,41 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         int kalRoundStd = (int)(kalRatioExact + 0.5f);
         if (kalRoundStd < 1 && kalBeta > 0.0f) kalRoundStd = 1;
 
-        // Micro: MNQ=$2/pt, MYM=$0.50/pt — ratio identique (mult/10)
-        // Mx2: 2 MNQ -> 2 * ratio MYM (meilleure granularite)
+        // Micro x2: 2 MNQ -> 2*ratio MYM (better granularity)
         float mx2OlsExact = olsRatioExact * 2.0f;
         int mx2OlsRound = (int)(mx2OlsExact + 0.5f);
         float mx2KalExact = kalRatioExact * 2.0f;
         int mx2KalRound = (int)(mx2KalExact + 0.5f);
 
+        // Micro x3: 3 MNQ -> 3*ratio MYM (even better granularity)
+        float mx3OlsExact = olsRatioExact * 3.0f;
+        int mx3OlsRound = (int)(mx3OlsExact + 0.5f);
+        float mx3KalExact = kalRatioExact * 3.0f;
+        int mx3KalRound = (int)(mx3KalExact + 0.5f);
+
         // Notionals
         float notNQ = NQClose * NQ_MULTIPLIER;
         float notYM = YMClose * YM_MULTIPLIER;
 
+        // Pre-format sizing columns for alignment
+        SCString olsStdStr, kalStdStr, olsMx2Str, kalMx2Str, olsMx3Str, kalMx3Str;
+        olsStdStr.Format("%d YM (%.2f)", olsRoundStd, olsRatioExact);
+        kalStdStr.Format("%d YM (%.2f)", kalRoundStd, kalRatioExact);
+        olsMx2Str.Format("%d MYM (%.2f)", mx2OlsRound, mx2OlsExact);
+        kalMx2Str.Format("%d MYM (%.2f)", mx2KalRound, mx2KalExact);
+        olsMx3Str.Format("%d MYM (%.2f)", mx3OlsRound, mx3OlsExact);
+        kalMx3Str.Format("%d MYM (%.2f)", mx3KalRound, mx3KalExact);
+
         SCString SizingText;
         SizingText.Format(
-            "  SIZING        OLS (%.4f)       Kalman (%.4f)\n"
-            "  Std    1 NQ / %d YM           |  1 NQ / %d YM\n"
-            "  Mx2    2 MNQ / %d MYM      |  2 MNQ / %d MYM\n"
-            "  Not:  NQ $%.0f   YM $%.0f",
-            beta, kalBeta,
-            olsRoundStd, kalRoundStd,
-            mx2OlsRound, mx2KalRound,
+            "  SIZING            OLS                 KALMAN\n"
+            "  Std   1 NQ  /     %-20s%s\n"
+            "  Mx2   2 MNQ /     %-20s%s\n"
+            "  Mx3   3 MNQ /     %-20s%s\n"
+            "  Not: NQ $%.0f   YM $%.0f",
+            olsStdStr.GetChars(), kalStdStr.GetChars(),
+            olsMx2Str.GetChars(), kalMx2Str.GetChars(),
+            olsMx3Str.GetChars(), kalMx3Str.GetChars(),
             notNQ, notYM
         );
 
@@ -1933,7 +1946,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         TradeBox.DrawingType = DRAWING_TEXT;
         TradeBox.LineNumber = 10004;
         TradeBox.BeginDateTime = 5;
-        TradeBox.BeginValue = 35;
+        TradeBox.BeginValue = 25;
         TradeBox.UseRelativeVerticalValues = 1;
         TradeBox.Region = sc.GraphRegion;
         TradeBox.Text = TradingText;
