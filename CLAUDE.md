@@ -22,9 +22,10 @@ Scripts a executer depuis la racine (cache = `output/cache`). Raw data (`raw/*.t
 ## Architecture
 
 ### Implementation Status
-Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (3 YAML), ~40 scripts, 62 tests.
+Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `src/validation/` (CPCV, gates, propfirm, neighborhood, DSR), `config/` (3 YAML), ~32 scripts actifs + 18 archives, 107 tests.
 Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
-Phase 2b v1 C++ : meme fichier (~1930 lignes) -- semi-auto trading (BUY/SELL/FLATTEN + auto-exits). Teste en simulation.
+Phase 2b v2 C++ : meme fichier (~2150 lignes) -- semi-auto trading (BUY/SELL/FLATTEN + auto-exits + auto-entry + scaling). Teste en simulation et replay.
+Phase 13c : Config D NQ_YM OLS validee (PF 2.13, 153 trades, CPCV 97.8%). Methodologie reproductible dans `METHODOLOGY.md`.
 
 ### Data Flow
 `raw/*.txt` (Sierra CSV 1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread/builder` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
@@ -39,8 +40,10 @@ Dependencies flow strictly downward. Config YAML loaded at script level, injecte
 - **`src/metrics/`** -- Aggregation: `MetricsConfig` + `compute_all_metrics()` -> DataFrame `adf_stat, hurst, half_life, correlation`
 - **`src/signals/`** -- `generator.py`: 4-state machine (numba JIT). `filters.py`: confidence, time stop, window filter (all numba)
 - **`src/backtest/`** -- `engine.py`: bar-by-bar + vectorized + grid-optimized. `performance.py`: PerformanceMetrics
-- **`config/`** -- `instruments.yaml`, `pairs.yaml`, `backtest.yaml`, `optimisation.yaml`
+- **`src/validation/`** -- `cpcv.py`: CPCV(10,2) 45 chemins. `gates.py`: binary ADF/Hurst/Corr gates. `neighborhood.py`: robustesse L1. `propfirm.py`: metriques $150K. `deflated_sharpe.py`: DSR correction
+- **`config/`** -- `instruments.yaml`, `pairs.yaml`, `backtest.yaml`
 - **`sierra/`** -- Phase 2 ACSIL C++. Production: `NQ_YM_SpreadMeanReversion_v1.0.cpp`. Source aussi: `F:\SierreChart_Spread_Indices\ACS_Source\`
+- **`scripts/archive/`** -- 18 scripts superseded (Phases 6-13a). Reference historique uniquement.
 
 ### Non-Obvious Architectural Details
 
@@ -62,9 +65,15 @@ Dependencies flow strictly downward. Config YAML loaded at script level, injecte
 
 9. **4-state machine**: FLAT -> LONG/SHORT -> COOLDOWN -> FLAT. COOLDOWN blocks re-entry until `|z| < z_exit`. NaN resets to FLAT.
 
-10. **Confidence scoring**: scores 0->1 via linear interpolation, ADF gate at -1.00 -> 0%. Weights pair-specific:
+10. **Confidence scoring** (Phases 6-12): scores 0->1 via linear interpolation, ADF gate at -1.00 -> 0%. Weights pair-specific:
     - **NQ_YM** : ADF 40%, Hurst 25%, Corr 20%, HL 15%
     - **NQ_RTY** : ADF 50%, Hurst 30%, Corr 20%, HL 0%
+
+11. **Binary gates** (Phase 13+): remplacent le scoring continu pour NQ_YM. ADF < -2.86, Hurst < 0.50, Corr > 0.70. Toutes doivent passer (AND). Plus robuste que le scoring continu (pas de compensation). `apply_gate_filter_numba()` bloque les ENTREES quand gate=False, ne bloque jamais les sorties.
+
+12. **CPCV(10,2)**: 45 chemins combinatoriaux. Sharpe = mean/std des PnL (PAS annualise, pas de sqrt(N)). Trade attribue si entree ET sortie dans les blocs test. Purge 100 barres (~8h).
+
+13. **Delta sigma**: `z_exit = max(z_entry - delta_tp, 0)`, `z_stop = z_entry + delta_sl`. Zero exclusions logiques.
 
 ## Research Context
 Lire `CHANGELOG.md` en debut de session. Verifier avant de proposer un test.
@@ -73,7 +82,17 @@ Lire `CHANGELOG.md` en debut de session. Verifier avant de proposer un test.
 6 instruments (NQ, ES, RTY, YM + MNQ, MYM). Paires viables : NQ/YM (OLS+Kalman), NQ/RTY (OLS+Kalman). Rejetees : NQ/ES, ES/RTY, ES/YM, RTY/YM. Micros : 1/10e standard, commission $0.62 RT.
 
 ## Configs Validees
-Voir MEMORY.md pour les parametres et resultats detailles de chaque config (Config E, K_Balanced, NQ_RTY Top 3 OLS, NQ_RTY Kalman textbox).
+Voir MEMORY.md pour les parametres et resultats detailles.
+
+### NQ_YM -- Config D (Phase 13c, PRODUCTION)
+OLS=7000, ADF_w=96, ZW=30, 02:00-14:00, ze=3.25, zx=0.50, zs=4.75, ts=0, binary gates.
+153 trades, PF 2.13, WR 69%, $24,880, DD -$4,595. CPCV 97.8% paths+. GO.
+
+### NQ_RTY -- Config #8 (Phase 11, E-mini only)
+OLS=9240, ZW=20, p36_96, 06:00-14:00, ze=3.00, zx=0.75, zs=5.0, conf=75.
+182 trades, PF 2.10, WR 71%, $40,730, DD -$4,605. WF 5/5.
+
+Autres configs (K_Balanced NQ_YM, K4_tc NQ_RTY, etc.) dans MEMORY.md.
 
 ## Phase 2a -- Sierra NQ_YM (VALIDE)
 Fichier : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` (~1480 lignes). DLL 64-bit, VS 2022 Build Tools.
@@ -103,5 +122,7 @@ Fichier : meme cpp (~2150 lignes). Inputs 22-31, PersistentInt 4-7, PersistentDo
 - **NQ/YM et NQ/RTY sont des paires independantes** -- ne jamais comparer
 
 ## Tech Stack
-- **Phase 1** : Python 3.11+, venv, pandas, numpy, numba, statsmodels, scipy, filterpy, optuna, pyarrow
+- **Phase 1** : Python 3.11+, venv, pandas, numpy, numba, statsmodels, scipy, pyarrow, matplotlib
 - **Phase 2** : C++ (ACSIL Sierra Charts API), header-only, online algorithms. VS 2022 Build Tools.
+- **Linting** : ruff (py311, line-length=100, rules E/F/W/I/UP/B). Config in `pyproject.toml`.
+- **CI** : `.github/workflows/test.yml` -- pytest + ruff check on windows-latest, Python 3.11.

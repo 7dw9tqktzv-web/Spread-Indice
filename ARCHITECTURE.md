@@ -69,13 +69,22 @@ Spread_Indice/
 |       |-- constants.py              # Enums: Instrument, HedgeMethod
 |       |-- time_utils.py             # SessionConfig, session/window filtering
 |
+|   |-- validation/                   # Phase 13+ validation framework
+|       |-- cpcv.py                   # CPCV(10,2): 45 combinatorial paths, purge zones
+|       |-- gates.py                  # Binary gates: ADF/Hurst/Corr, apply_gate_filter_numba
+|       |-- deflated_sharpe.py        # DSR: correct for multiple testing bias
+|       |-- neighborhood.py           # L1 parameter robustness check
+|       |-- propfirm.py              # $150K account metrics, daily loss, trailing DD
+|
 |-- tests/
 |   |-- conftest.py                    # Shared fixtures
 |   |-- test_backtest/                 # engine + performance tests
 |   |-- test_hedge/                    # OLS + Kalman tests
 |   |-- test_signals/                  # Signal generation + filter tests
+|   |-- test_validation/              # CPCV + gates + DSR + neighborhood tests
 |
-|-- scripts/                           # ~40 analysis/grid/validation scripts
+|-- scripts/                           # ~32 active scripts
+|   |-- archive/                       # 18 superseded scripts (Phases 6-13a)
 |
 |-- sierra/                            # Phase 2 ACSIL C++
 |   |-- NQ_YM_SpreadMeanReversion_v1.0.cpp  # Production indicator (~2150 lines)
