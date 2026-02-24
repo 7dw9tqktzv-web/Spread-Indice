@@ -23,7 +23,6 @@ python scripts/run_backtest.py --pair NQ_RTY --method kalman --alpha-ratio 3e-7
 ```bash
 python scripts/run_refined_grid.py --workers 5          # OLS refined (1,080,000 combos)
 python scripts/run_grid_kalman_v3.py --workers 10       # Kalman (1,009,800 combos)
-python scripts/run_grid.py --workers 20                 # OLS broad (43,200, 6 pairs)
 ```
 
 ## Grid Search -- NQ_RTY
@@ -62,7 +61,6 @@ python scripts/analyze_filters.py                       # Filter ablation NQ_YM
 ## Diagnostics
 
 ```bash
-python scripts/test_adaptive_r.py                       # P1 R adaptatif (INVALIDE)
 python scripts/analyze_kalman_diagnostics.py            # P2 diagnostics + deconfounding
 ```
 

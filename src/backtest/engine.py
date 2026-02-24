@@ -140,7 +140,131 @@ def _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
 
 
 # ---------------------------------------------------------------------------
-# Vectorized backtest (fast, for grid search)
+# Shared helpers for vectorized/grid backtests
+# ---------------------------------------------------------------------------
+
+_EMPTY_RESULT = {
+    "trades": 0, "win_rate": 0.0, "pnl": 0.0, "profit_factor": 0.0,
+    "avg_pnl_trade": 0.0, "avg_duration_bars": 0,
+}
+
+
+def _detect_and_pair_trades(sig: np.ndarray):
+    """Detect signal transitions and pair entries with exits.
+
+    Returns (te, tx, num_trades) or (None, None, 0) if no trades.
+    """
+    prev_sig = np.roll(sig, 1)
+    prev_sig[0] = 0
+
+    entry_bars = np.where((prev_sig == 0) & (sig != 0))[0]
+    exit_bars = np.where((prev_sig != 0) & (sig == 0))[0]
+
+    if len(entry_bars) == 0 or len(exit_bars) == 0:
+        return None, None, 0
+
+    trade_entries = []
+    trade_exits = []
+    exit_idx = 0
+    for eb in entry_bars:
+        while exit_idx < len(exit_bars) and exit_bars[exit_idx] <= eb:
+            exit_idx += 1
+        if exit_idx < len(exit_bars):
+            trade_entries.append(eb)
+            trade_exits.append(exit_bars[exit_idx])
+            exit_idx += 1
+
+    if len(trade_entries) == 0:
+        return None, None, 0
+
+    return np.array(trade_entries), np.array(trade_exits), len(trade_entries)
+
+
+def _compute_trades(
+    px_a, px_b, sig, bt, te, tx, num_trades,
+    mult_a, mult_b, tick_a, tick_b,
+    slippage_ticks, commission, max_multiplier, dollar_stop,
+):
+    """Compute sizing, slippage, dollar stop, and PnL for matched trades.
+
+    Returns (te, tx, sides, n_a, n_b, entry_px_a, entry_px_b, pnl_net, durations).
+    """
+    sides = sig[te].astype(np.int8)
+
+    # Beta at entry
+    b = bt[te].copy()
+    b[~np.isfinite(b)] = 1.0
+
+    # Sizing
+    not_a = px_a[te] * mult_a
+    not_b = px_b[te] * mult_b
+    with np.errstate(divide="ignore", invalid="ignore"):
+        n_b_raw = (not_a / not_b) * np.abs(b)
+    n_b_raw = np.nan_to_num(n_b_raw, nan=1.0, posinf=1.0, neginf=1.0)
+
+    if max_multiplier > 1:
+        n_a = np.ones(num_trades, dtype=int)
+        n_b = np.ones(num_trades, dtype=int)
+        for i in range(num_trades):
+            _, na_i, nb_i, _ = find_optimal_multiplier(n_b_raw[i], max_multiplier)
+            n_a[i] = na_i
+            n_b[i] = nb_i
+    else:
+        n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
+        n_a = np.ones(num_trades, dtype=int)
+
+    # Slippage at entry
+    entry_px_a = px_a[te] + sides * slippage_ticks * tick_a
+    entry_px_b = px_b[te] - sides * slippage_ticks * tick_b
+
+    # Dollar stop: may advance exit bars
+    if dollar_stop > 0:
+        tx = _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
+                                n_a, n_b, mult_a, mult_b, dollar_stop)
+
+    # Slippage at exit
+    exit_px_a = px_a[tx] - sides * slippage_ticks * tick_a
+    exit_px_b = px_b[tx] + sides * slippage_ticks * tick_b
+
+    # PnL
+    delta_a = exit_px_a - entry_px_a
+    delta_b = exit_px_b - entry_px_b
+    pnl_gross = sides * (n_a * delta_a * mult_a - n_b * delta_b * mult_b)
+    costs = commission * (n_a + n_b) * 2
+    pnl_net = pnl_gross - costs
+
+    durations = tx - te
+
+    return te, tx, sides, n_a, n_b, entry_px_a, entry_px_b, pnl_net, durations
+
+
+def _compute_summary_stats(pnl_net, durations, num_trades):
+    """Compute summary statistics from trade PnL array."""
+    total_pnl = float(pnl_net.sum())
+    wins = pnl_net > 0
+    win_rate = float(wins.sum() / num_trades * 100) if num_trades > 0 else 0.0
+
+    gross_gains = float(pnl_net[wins].sum()) if wins.any() else 0.0
+    gross_losses = float(abs(pnl_net[~wins].sum())) if (~wins).any() else 0.0
+    profit_factor = gross_gains / gross_losses if gross_losses > 0 else (
+        float("inf") if gross_gains > 0 else 0.0
+    )
+
+    avg_pnl = total_pnl / num_trades if num_trades > 0 else 0.0
+    avg_dur = float(durations.mean()) if num_trades > 0 else 0
+
+    return {
+        "trades": num_trades,
+        "win_rate": round(win_rate, 1),
+        "pnl": round(total_pnl, 2),
+        "profit_factor": round(profit_factor, 2),
+        "avg_pnl_trade": round(avg_pnl, 2),
+        "avg_duration_bars": round(avg_dur, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Vectorized backtest (fast, with equity curve)
 # ---------------------------------------------------------------------------
 
 def run_backtest_vectorized(
@@ -158,10 +282,7 @@ def run_backtest_vectorized(
     max_multiplier: int = 1,
     dollar_stop: float = 0.0,
 ) -> dict:
-    """Vectorized backtest — returns summary dict (no Trade objects).
-
-    Detects signal transitions, computes sizing/slippage/PnL per trade,
-    then builds mark-to-market equity curve. ~50-100x faster than bar loop.
+    """Vectorized backtest — returns summary dict with equity curve.
 
     Parameters
     ----------
@@ -183,137 +304,45 @@ def run_backtest_vectorized(
 
     Returns
     -------
-    dict with keys: trades (int), win_rate, pnl, profit_factor, avg_pnl_trade,
-    equity (np.ndarray), trade_sides (np.ndarray), trade_pnls (np.ndarray),
+    dict with keys: trades, win_rate, pnl, profit_factor, avg_pnl_trade,
+    equity, trade_sides, trade_pnls, trade_entry_bars, trade_exit_bars,
     avg_duration_bars, max_duration_bars
     """
     n = len(px_a)
 
-    # --- Detect transitions ---
-    prev_sig = np.roll(sig, 1)
-    prev_sig[0] = 0
+    te, tx, num_trades = _detect_and_pair_trades(sig)
 
-    entries = (prev_sig == 0) & (sig != 0)
-    exits = (prev_sig != 0) & (sig == 0)
-
-    entry_bars = np.where(entries)[0]
-    exit_bars = np.where(exits)[0]
-
-    # Match entries to exits: each entry matched with the next exit after it
-    if len(entry_bars) == 0 or len(exit_bars) == 0:
+    if num_trades == 0:
         equity = np.full(n, initial_capital)
         return {
-            "trades": 0, "win_rate": 0.0, "pnl": 0.0, "profit_factor": 0.0,
-            "avg_pnl_trade": 0.0, "equity": equity, "trade_sides": np.array([]),
+            **_EMPTY_RESULT,
+            "equity": equity, "trade_sides": np.array([]),
             "trade_pnls": np.array([]), "trade_entry_bars": np.array([], dtype=int),
-            "trade_exit_bars": np.array([], dtype=int),
-            "avg_duration_bars": 0, "max_duration_bars": 0,
+            "trade_exit_bars": np.array([], dtype=int), "max_duration_bars": 0,
         }
 
-    # Pair up: for each entry, find the first exit >= entry
-    trade_entries = []
-    trade_exits = []
-    exit_idx = 0
-    for eb in entry_bars:
-        while exit_idx < len(exit_bars) and exit_bars[exit_idx] <= eb:
-            exit_idx += 1
-        if exit_idx < len(exit_bars):
-            trade_entries.append(eb)
-            trade_exits.append(exit_bars[exit_idx])
-            exit_idx += 1
+    te, tx, sides, n_a, n_b, entry_px_a, entry_px_b, pnl_net, durations = _compute_trades(
+        px_a, px_b, sig, bt, te, tx, num_trades,
+        mult_a, mult_b, tick_a, tick_b,
+        slippage_ticks, commission, max_multiplier, dollar_stop,
+    )
 
-    if len(trade_entries) == 0:
-        equity = np.full(n, initial_capital)
-        return {
-            "trades": 0, "win_rate": 0.0, "pnl": 0.0, "profit_factor": 0.0,
-            "avg_pnl_trade": 0.0, "equity": equity, "trade_sides": np.array([]),
-            "trade_pnls": np.array([]), "trade_entry_bars": np.array([], dtype=int),
-            "trade_exit_bars": np.array([], dtype=int),
-            "avg_duration_bars": 0, "max_duration_bars": 0,
-        }
+    # Mark-to-market equity curve
+    equity = _build_equity_curve(
+        px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
+        n_a, n_b, pnl_net, mult_a, mult_b, initial_capital, n, num_trades,
+    )
 
-    te = np.array(trade_entries)
-    tx = np.array(trade_exits)
-    num_trades = len(te)
-
-    # --- Compute per-trade values ---
-    sides = sig[te].astype(np.int8)
-
-    # Beta at entry
-    b = bt[te].copy()
-    b[~np.isfinite(b)] = 1.0
-
-    # Sizing: N_b = round((px_a * mult_a) / (px_b * mult_b) * |beta| * N_a)
-    not_a = px_a[te] * mult_a
-    not_b = px_b[te] * mult_b
-    with np.errstate(divide="ignore", invalid="ignore"):
-        n_b_raw = (not_a / not_b) * np.abs(b)
-    n_b_raw = np.nan_to_num(n_b_raw, nan=1.0, posinf=1.0, neginf=1.0)
-
-    if max_multiplier > 1:
-        # Apply optimal multiplier per trade to minimize hedge error
-        n_a = np.ones(num_trades, dtype=int)
-        n_b = np.ones(num_trades, dtype=int)
-        for i in range(num_trades):
-            _, na_i, nb_i, _ = find_optimal_multiplier(n_b_raw[i], max_multiplier)
-            n_a[i] = na_i
-            n_b[i] = nb_i
-    else:
-        n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
-        n_a = np.ones(num_trades, dtype=int)
-
-    # Slippage at entry
-    entry_px_a = px_a[te] + sides * slippage_ticks * tick_a
-    entry_px_b = px_b[te] - sides * slippage_ticks * tick_b
-
-    # Dollar stop: may modify exit bars
-    if dollar_stop > 0:
-        tx = _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
-                                n_a, n_b, mult_a, mult_b, dollar_stop)
-
-    # Slippage at exit
-    exit_px_a = px_a[tx] - sides * slippage_ticks * tick_a
-    exit_px_b = px_b[tx] + sides * slippage_ticks * tick_b
-
-    # PnL per trade
-    delta_a = exit_px_a - entry_px_a
-    delta_b = exit_px_b - entry_px_b
-    pnl_gross = sides * (n_a * delta_a * mult_a - n_b * delta_b * mult_b)
-    costs = commission * (n_a + n_b) * 2
-    pnl_net = pnl_gross - costs
-
-    # Durations
-    durations = tx - te
-
-    # --- Mark-to-market equity ---
-    equity = _build_equity_curve(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
-                                  n_a, n_b, pnl_net, mult_a, mult_b, initial_capital, n, num_trades)
-
-    # --- Summary stats ---
-    total_pnl = float(pnl_net.sum())
-    wins = pnl_net > 0
-    win_rate = float(wins.sum() / num_trades * 100) if num_trades > 0 else 0.0
-
-    gross_gains = float(pnl_net[wins].sum()) if wins.any() else 0.0
-    gross_losses = float(abs(pnl_net[~wins].sum())) if (~wins).any() else 0.0
-    profit_factor = gross_gains / gross_losses if gross_losses > 0 else (float("inf") if gross_gains > 0 else 0.0)
-
-    avg_pnl = total_pnl / num_trades if num_trades > 0 else 0.0
-    avg_dur = float(durations.mean()) if num_trades > 0 else 0
+    stats = _compute_summary_stats(pnl_net, durations, num_trades)
     max_dur = int(durations.max()) if num_trades > 0 else 0
 
     return {
-        "trades": num_trades,
-        "win_rate": round(win_rate, 1),
-        "pnl": round(total_pnl, 2),
-        "profit_factor": round(profit_factor, 2),
-        "avg_pnl_trade": round(avg_pnl, 2),
+        **stats,
         "equity": equity,
         "trade_sides": sides,
         "trade_pnls": pnl_net,
         "trade_entry_bars": te,
         "trade_exit_bars": tx,
-        "avg_duration_bars": round(avg_dur, 1),
         "max_duration_bars": max_dur,
     }
 
@@ -341,98 +370,18 @@ def run_backtest_grid(
     Returns only trade-level stats: trades, win_rate, pnl, profit_factor,
     avg_pnl_trade, avg_duration_bars.
     """
-    n = len(px_a)
+    te, tx, num_trades = _detect_and_pair_trades(sig)
 
-    prev_sig = np.roll(sig, 1)
-    prev_sig[0] = 0
+    if num_trades == 0:
+        return dict(_EMPTY_RESULT)
 
-    entries = (prev_sig == 0) & (sig != 0)
-    exits = (prev_sig != 0) & (sig == 0)
+    _, tx, _, _, _, _, _, pnl_net, durations = _compute_trades(
+        px_a, px_b, sig, bt, te, tx, num_trades,
+        mult_a, mult_b, tick_a, tick_b,
+        slippage_ticks, commission, max_multiplier, dollar_stop,
+    )
 
-    entry_bars = np.where(entries)[0]
-    exit_bars = np.where(exits)[0]
-
-    if len(entry_bars) == 0 or len(exit_bars) == 0:
-        return {"trades": 0, "win_rate": 0.0, "pnl": 0.0, "profit_factor": 0.0,
-                "avg_pnl_trade": 0.0, "avg_duration_bars": 0}
-
-    # Pair up entries/exits
-    trade_entries = []
-    trade_exits = []
-    exit_idx = 0
-    for eb in entry_bars:
-        while exit_idx < len(exit_bars) and exit_bars[exit_idx] <= eb:
-            exit_idx += 1
-        if exit_idx < len(exit_bars):
-            trade_entries.append(eb)
-            trade_exits.append(exit_bars[exit_idx])
-            exit_idx += 1
-
-    if len(trade_entries) == 0:
-        return {"trades": 0, "win_rate": 0.0, "pnl": 0.0, "profit_factor": 0.0,
-                "avg_pnl_trade": 0.0, "avg_duration_bars": 0}
-
-    te = np.array(trade_entries)
-    tx = np.array(trade_exits)
-    num_trades = len(te)
-
-    sides = sig[te].astype(np.int8)
-
-    b = bt[te].copy()
-    b[~np.isfinite(b)] = 1.0
-
-    not_a = px_a[te] * mult_a
-    not_b = px_b[te] * mult_b
-    with np.errstate(divide="ignore", invalid="ignore"):
-        n_b_raw = (not_a / not_b) * np.abs(b)
-    n_b_raw = np.nan_to_num(n_b_raw, nan=1.0, posinf=1.0, neginf=1.0)
-
-    if max_multiplier > 1:
-        n_a = np.ones(num_trades, dtype=int)
-        n_b = np.ones(num_trades, dtype=int)
-        for i in range(num_trades):
-            _, na_i, nb_i, _ = find_optimal_multiplier(n_b_raw[i], max_multiplier)
-            n_a[i] = na_i
-            n_b[i] = nb_i
-    else:
-        n_b = np.maximum(np.round(n_b_raw).astype(int), 1)
-        n_a = np.ones(num_trades, dtype=int)
-
-    entry_px_a = px_a[te] + sides * slippage_ticks * tick_a
-    entry_px_b = px_b[te] - sides * slippage_ticks * tick_b
-
-    if dollar_stop > 0:
-        tx = _apply_dollar_stop(px_a, px_b, te, tx, sides, entry_px_a, entry_px_b,
-                                n_a, n_b, mult_a, mult_b, dollar_stop)
-
-    exit_px_a = px_a[tx] - sides * slippage_ticks * tick_a
-    exit_px_b = px_b[tx] + sides * slippage_ticks * tick_b
-
-    delta_a = exit_px_a - entry_px_a
-    delta_b = exit_px_b - entry_px_b
-    pnl_gross = sides * (n_a * delta_a * mult_a - n_b * delta_b * mult_b)
-    costs = commission * (n_a + n_b) * 2
-    pnl_net = pnl_gross - costs
-
-    durations = tx - te
-
-    total_pnl = float(pnl_net.sum())
-    wins = pnl_net > 0
-    win_rate = float(wins.sum() / num_trades * 100) if num_trades > 0 else 0.0
-    gross_gains = float(pnl_net[wins].sum()) if wins.any() else 0.0
-    gross_losses = float(abs(pnl_net[~wins].sum())) if (~wins).any() else 0.0
-    profit_factor = gross_gains / gross_losses if gross_losses > 0 else (float("inf") if gross_gains > 0 else 0.0)
-    avg_pnl = total_pnl / num_trades if num_trades > 0 else 0.0
-    avg_dur = float(durations.mean()) if num_trades > 0 else 0
-
-    return {
-        "trades": num_trades,
-        "win_rate": round(win_rate, 1),
-        "pnl": round(total_pnl, 2),
-        "profit_factor": round(profit_factor, 2),
-        "avg_pnl_trade": round(avg_pnl, 2),
-        "avg_duration_bars": round(avg_dur, 1),
-    }
+    return _compute_summary_stats(pnl_net, durations, num_trades)
 
 
 # ---------------------------------------------------------------------------

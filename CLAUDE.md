@@ -22,7 +22,7 @@ Scripts a executer depuis la racine (cache = `output/cache`). Raw data (`raw/*.t
 ## Architecture
 
 ### Implementation Status
-Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (4 YAML), 40 scripts, 62 tests. Stubs : `src/optimisation/`.
+Phase 1 complete : `src/data/`, `src/hedge/` (OLS+Kalman), `src/spread/`, `src/sizing/`, `src/stats/`, `src/metrics/`, `src/signals/` (numba JIT 451x), `src/backtest/`, `src/utils/`, `config/` (3 YAML), ~40 scripts, 62 tests.
 Phase 2a C++ : `sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp` -- indicateur visuel valide. Phase 2a NQ_RTY a venir.
 Phase 2b v1 C++ : meme fichier (~1930 lignes) -- semi-auto trading (BUY/SELL/FLATTEN + auto-exits). Teste en simulation.
 

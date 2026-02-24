@@ -2,34 +2,35 @@
 session:
   session_start: "17:30"
   session_end: "15:30"
-  buffer_minutes: 0           # session 17:30-15:30 est déjà bufferisée vs Globex 17:00-16:00
-  trading_start: "04:00"
+  buffer_minutes: 0           # session 17:30-15:30 est deja bufferisee vs Globex 17:00-16:00
+  trading_start: "02:00"
   trading_end: "14:00"
 
 # Timeframe
 timeframe: "5min"
 
 # Hedge ratio parameters (on log-prices)
+# Defaults match Config E (NQ_YM OLS principal) -- see MEMORY.md for all validated configs
 hedge:
-  ols_window: 7200          # 30 jours (12 bars/h × 20h × 30j)
-  zscore_window: 12         # 1 heure (OLS z-score)
-  kalman_alpha_ratio: 1.0e-5  # Q = alpha × R × I (à optimiser: [1e-6, 1e-5, 1e-4])
-  kalman_warmup: 100          # barres ignorées pendant convergence
-  kalman_gap_P_mult: 10.0     # facteur élargissement P aux gaps overnight
+  ols_window: 3300            # Config E validated
+  zscore_window: 30           # Config E validated
+  kalman_alpha_ratio: 3.0e-7  # K_Balanced validated
+  kalman_warmup: 100          # barres ignorees pendant convergence
+  kalman_gap_P_mult: 10.0     # facteur elargissement P aux gaps overnight
 
-# Metrics parameters
+# Metrics parameters (profil tres_court)
 metrics:
-  correlation_window: 12    # 1 heure
-  correlation_min: 0.8      # seuil configurable
-  adf_window: 24            # 2 heures
-  hurst_window: 256         # ~21h20 (~1 jour de session)
-  halflife_window: 24       # 2 heures
+  correlation_window: 6
+  correlation_min: 0.8
+  adf_window: 12
+  hurst_window: 64
+  halflife_window: 12
 
-# Default signal parameters
+# Default signal parameters (Config E)
 signals:
-  z_entry: 2.0
-  z_exit: 0.5
-  z_stop: 4.0
+  z_entry: 3.15
+  z_exit: 1.00
+  z_stop: 4.50
 
 # Backtest parameters
 backtest:

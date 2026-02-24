@@ -7,3 +7,17 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # line too long -- handled by formatter when needed
+    "B905",   # zip without strict -- not relevant for numpy/pandas patterns
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]

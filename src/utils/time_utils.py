@@ -31,12 +31,6 @@ def parse_session_config(cfg: dict) -> SessionConfig:
     )
 
 
-def is_in_trading_window(ts: pd.Timestamp, session: SessionConfig) -> bool:
-    """Check if a timestamp falls within the trading window."""
-    t = ts.time()
-    return session.trading_start <= t < session.trading_end
-
-
 def filter_trading_window(df: pd.DataFrame, session: SessionConfig) -> pd.DataFrame:
     """Keep only bars within the trading window [trading_start, trading_end)."""
     mask = df.index.map(lambda ts: session.trading_start <= ts.time() < session.trading_end)

@@ -15,20 +15,7 @@ class Instrument(str, Enum):
 class HedgeMethod(str, Enum):
     OLS_ROLLING = "ols_rolling"
     KALMAN = "kalman"
-    DOLLAR_NEUTRAL = "dollar_neutral"
-    VOLATILITY_NEUTRAL = "volatility_neutral"
 
-
-# All 6 pairs as (leg_a, leg_b) tuples
-PAIRS = [
-    (Instrument.NQ, Instrument.ES),
-    (Instrument.NQ, Instrument.RTY),
-    (Instrument.NQ, Instrument.YM),
-    (Instrument.ES, Instrument.RTY),
-    (Instrument.ES, Instrument.YM),
-    (Instrument.RTY, Instrument.YM),
-    (Instrument.MNQ, Instrument.MYM),
-]
 
 # Sierra Charts CSV column mapping
 SIERRA_COLUMNS = {
@@ -43,9 +30,6 @@ SIERRA_COLUMNS = {
     "BidVolume": "bid_vol",
     "AskVolume": "ask_vol",
 }
-
-# OHLCV columns after loading
-OHLCV_COLUMNS = ["open", "high", "low", "close", "volume"]
 
 # Raw file naming pattern
 RAW_FILE_PATTERN = "{symbol}H26_FUT_CME_1mn.scid_BarData.txt"
