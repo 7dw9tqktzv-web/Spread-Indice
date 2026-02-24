@@ -213,7 +213,7 @@ float CalculateOLSBeta(SCFloatArrayRef arrX, SCFloatArrayRef arrY,
 
     double denominator = n * sumX2 - sumX * sumX;
 
-    if (denominator == 0.0)
+    if (fabs(denominator) < 1e-12)
     {
         outAlpha = 0.0f;
         return 1.0f;
@@ -275,7 +275,7 @@ float CalculateADFSimple(SCFloatArrayRef spread, int endIndex, int period)
     double ss_xy = sumXY - nf * meanX * meanY;
     double ss_y = sumY2 - nf * meanY * meanY;
 
-    if (ss_x == 0.0)
+    if (fabs(ss_x) < 1e-12)
         return 0.0f;
 
     double gamma = ss_xy / ss_x;
@@ -929,7 +929,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     int& PendingOrderAction = sc.GetPersistentInt(6);  // 0=none, 1=buy, 2=sell, 3=flatten
     int& AutoEntryLastBarIndex = sc.GetPersistentInt(7);  // dedup: last auto-entry bar
     double& EntrySpreadZ = sc.GetPersistentDouble(8);
-    double& EntryTotalPnL = sc.GetPersistentDouble(9);  // P&L baseline at entry
     double& LastOrderTime = sc.GetPersistentDouble(10);  // cooldown anti double-click
 
     // ========================================================================
@@ -950,7 +949,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         TradeState = STATE_FLAT;
 
         // Trading state: do NOT reset on full recalc (preserves live position)
-        // TradingPosition, EntryBarIndex, EntrySpreadZ, EntryTotalPnL kept as-is
+        // TradingPosition, EntryBarIndex, EntrySpreadZ kept as-is
 
         // Control Bar Buttons setup
         sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_1, "BUY SP");
@@ -961,6 +960,11 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
 
         sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_3, "FLAT SP");
         sc.SetCustomStudyControlBarButtonHoverText(ACS_BUTTON_3, "FLATTEN (Close All Positions)");
+
+        // Re-enable buttons (they get disabled on click for visual feedback)
+        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_1, 1);
+        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_2, 1);
+        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_3, 1);
     }
 
     // Cleanup buttons when study is removed
@@ -1496,7 +1500,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                         leg1Sym.GetChars(), realQty1, leg2Sym.GetChars(), realQty2);
                     sc.AddMessageToLog(syncMsg, 1);
                     TradingPosition = expectedPos;
-                    if (expectedPos == 0) { EntryBarIndex = 0; EntrySpreadZ = 0.0; EntryTotalPnL = 0.0; }
+                    if (expectedPos == 0) { EntryBarIndex = 0; EntrySpreadZ = 0.0; }
                 }
             }
 
@@ -1561,7 +1565,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                             {
                                 EntryBarIndex = sc.Index;
                                 EntrySpreadZ = (double)zScore;
-                                EntryTotalPnL = 0.0;
                             }
                             TradingPosition = 1;
                             LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
@@ -1611,7 +1614,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                             {
                                 EntryBarIndex = sc.Index;
                                 EntrySpreadZ = (double)zScore;
-                                EntryTotalPnL = 0.0;
                             }
                             TradingPosition = -1;
                             LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
@@ -1634,7 +1636,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                         TradingPosition = 0;
                         EntryBarIndex = 0;
                         EntrySpreadZ = 0.0;
-                        EntryTotalPnL = 0.0;
                     }
                     else
                     {
@@ -1675,7 +1676,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                         TradingPosition = 0;
                         EntryBarIndex = 0;
                         EntrySpreadZ = 0.0;
-                        EntryTotalPnL = 0.0;
                         LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
                     }
                 }
@@ -1776,7 +1776,6 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                     TradingPosition = 0;
                     EntryBarIndex = 0;
                     EntrySpreadZ = 0.0;
-                    EntryTotalPnL = 0.0;
                 }
             }
         }  // end !IsFullRecalculation
