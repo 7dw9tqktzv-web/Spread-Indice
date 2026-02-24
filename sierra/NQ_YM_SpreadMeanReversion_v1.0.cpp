@@ -544,6 +544,7 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     SCInputRef InDollarStop      = sc.Input[28];
     SCInputRef InTimeStop         = sc.Input[29];
     SCInputRef InEnableAutoExit  = sc.Input[30];
+    SCInputRef InAutoEntry       = sc.Input[31];
 
     // ========================================================================
     // CONFIGURATION PAR DEFAUT - Config E + K_Balanced + Trading
@@ -558,12 +559,14 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         sc.AutoLoop = 1;
         sc.GraphRegion = 1;      // Separate region for spread
         sc.CalculationPrecedence = LOW_PREC_LEVEL;
+        sc.ReceivePointerEvents = ACS_RECEIVE_POINTER_EVENTS_ALWAYS;
+        sc.UpdateAlways = 1;
 
         // Trading setup (Phase 2b)
-        sc.AllowMultipleEntriesInSameDirection = 0;
+        sc.AllowMultipleEntriesInSameDirection = 1;  // Allow scaling in (cooldown protects double-click)
         sc.MaximumPositionAllowed = 10;
         sc.SupportAttachedOrdersForTrading = 0;
-        sc.AllowOnlyOneTradePerBar = 1;
+        sc.AllowOnlyOneTradePerBar = 0;  // Manual buttons need multiple orders per bar
         sc.SupportReversals = 0;
         sc.SendOrdersToTradeService = !sc.GlobalTradeSimulationIsOn;
 
@@ -870,6 +873,10 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         InEnableAutoExit.SetYesNo(1);
         InEnableAutoExit.SetDescription("Enable automatic exits (z-exit, dollar stop, time stop).");
 
+        InAutoEntry.Name = "32. Trading: Auto-Entry (OLS)";
+        InAutoEntry.SetYesNo(0);
+        InAutoEntry.SetDescription("Auto-enter when OLS signal fires (same logic as backtest).");
+
         return;
     }
 
@@ -920,8 +927,10 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     int& TradingPosition = sc.GetPersistentInt(4);  // 0=FLAT, 1=LONG_SPREAD, -1=SHORT_SPREAD
     int& EntryBarIndex = sc.GetPersistentInt(5);
     int& PendingOrderAction = sc.GetPersistentInt(6);  // 0=none, 1=buy, 2=sell, 3=flatten
+    int& AutoEntryLastBarIndex = sc.GetPersistentInt(7);  // dedup: last auto-entry bar
     double& EntrySpreadZ = sc.GetPersistentDouble(8);
     double& EntryTotalPnL = sc.GetPersistentDouble(9);  // P&L baseline at entry
+    double& LastOrderTime = sc.GetPersistentDouble(10);  // cooldown anti double-click
 
     // ========================================================================
     // INITIALISATION (full recalc)
@@ -942,6 +951,48 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
 
         // Trading state: do NOT reset on full recalc (preserves live position)
         // TradingPosition, EntryBarIndex, EntrySpreadZ, EntryTotalPnL kept as-is
+
+        // Control Bar Buttons setup
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_1, "BUY SP");
+        sc.SetCustomStudyControlBarButtonHoverText(ACS_BUTTON_1, "BUY SPREAD (Long NQ, Short YM)");
+
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_2, "SELL SP");
+        sc.SetCustomStudyControlBarButtonHoverText(ACS_BUTTON_2, "SELL SPREAD (Short NQ, Long YM)");
+
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_3, "FLAT SP");
+        sc.SetCustomStudyControlBarButtonHoverText(ACS_BUTTON_3, "FLATTEN (Close All Positions)");
+    }
+
+    // Cleanup buttons when study is removed
+    if (sc.LastCallToFunction)
+    {
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_1, "");
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_2, "");
+        sc.SetCustomStudyControlBarButtonText(ACS_BUTTON_3, "");
+        return;
+    }
+
+    // ========================================================================
+    // CONTROL BAR BUTTON DETECTION (last bar -- where trading logic runs)
+    // ========================================================================
+    if (sc.Index == sc.ArraySize - 1 && sc.MenuEventID != 0)
+    {
+        if (sc.MenuEventID >= ACS_BUTTON_1 && sc.MenuEventID <= ACS_BUTTON_3)
+        {
+            sc.SetCustomStudyControlBarButtonEnable(sc.MenuEventID, 0);
+
+            if (sc.MenuEventID == ACS_BUTTON_1)
+                PendingOrderAction = 1;  // BUY SPREAD
+            else if (sc.MenuEventID == ACS_BUTTON_2)
+                PendingOrderAction = 2;  // SELL SPREAD
+            else if (sc.MenuEventID == ACS_BUTTON_3)
+                PendingOrderAction = 3;  // FLATTEN
+
+            SCString btnMsg;
+            btnMsg.Format("BUTTON: %s queued",
+                PendingOrderAction == 1 ? "BUY" : (PendingOrderAction == 2 ? "SHORT" : "FLATTEN"));
+            sc.AddMessageToLog(btnMsg, 0);
+        }
     }
 
     // ========================================================================
@@ -1351,6 +1402,39 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
     TradeStateSG[sc.Index] = (float)TradeState;
 
     // ========================================================================
+    // AUTO-ENTRY DETECTION (runs on every bar, not just last bar)
+    // During fast replay, the signal bar may not be the last bar in the batch.
+    // Detection sets PendingOrderAction; execution happens on the last bar.
+    // Skipped during full recalc to avoid triggering on historical signals.
+    // ========================================================================
+    if (!sc.IsFullRecalculation
+        && InAutoEntry.GetYesNo() != 0
+        && PendingOrderAction == 0
+        && TradingPosition == 0
+        && AutoEntryLastBarIndex != sc.Index)
+    {
+        bool justLong  = (prevState == STATE_FLAT && TradeState == STATE_LONG);
+        bool justShort = (prevState == STATE_FLAT && TradeState == STATE_SHORT);
+
+        if (justLong)
+        {
+            PendingOrderAction = 1;
+            AutoEntryLastBarIndex = sc.Index;
+            SCString msg;
+            msg.Format("AUTO-ENTRY: OLS LONG | Z=%.2f Conf=%.0f%%", zScore, confidence);
+            sc.AddMessageToLog(msg, 0);
+        }
+        else if (justShort)
+        {
+            PendingOrderAction = 2;
+            AutoEntryLastBarIndex = sc.Index;
+            SCString msg;
+            msg.Format("AUTO-ENTRY: OLS SHORT | Z=%.2f Conf=%.0f%%", zScore, confidence);
+            sc.AddMessageToLog(msg, 0);
+        }
+    }
+
+    // ========================================================================
     // PHASE 2b — TRADING LOGIC (last bar only)
     // ========================================================================
     //
@@ -1386,15 +1470,44 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
             bool leg1Valid = (leg1Sym.GetLength() > 0);
             bool leg2Valid = (leg2Sym.GetLength() > 0);
 
-            // --- Position tracking ---
+            // --- Real position sync (source of truth = broker) ---
             s_SCPositionData Leg1Pos, Leg2Pos;
-            double totalPnL = 0.0;
+            int realQty1 = 0, realQty2 = 0;
 
-            if (TradingPosition != 0 && leg1Valid && leg2Valid)
+            if (leg1Valid && leg2Valid)
             {
                 sc.GetTradePositionForSymbolAndAccount(Leg1Pos, leg1Sym, sc.SelectedTradeAccount);
                 sc.GetTradePositionForSymbolAndAccount(Leg2Pos, leg2Sym, sc.SelectedTradeAccount);
-                totalPnL = Leg1Pos.OpenProfitLoss + Leg2Pos.OpenProfitLoss;
+                realQty1 = Leg1Pos.PositionQuantity;
+                realQty2 = Leg2Pos.PositionQuantity;
+
+                // Desync detection: fix TradingPosition from real positions
+                bool reallyFlat = (realQty1 == 0 && realQty2 == 0);
+                bool reallyLong = (realQty1 > 0 && realQty2 < 0);   // Long NQ, Short YM
+                bool reallyShort = (realQty1 < 0 && realQty2 > 0);  // Short NQ, Long YM
+
+                int expectedPos = reallyLong ? 1 : (reallyShort ? -1 : 0);
+
+                if (TradingPosition != expectedPos)
+                {
+                    SCString syncMsg;
+                    syncMsg.Format("SYNC: TradingPosition %d -> %d (real: %s qty=%d, %s qty=%d)",
+                        TradingPosition, expectedPos,
+                        leg1Sym.GetChars(), realQty1, leg2Sym.GetChars(), realQty2);
+                    sc.AddMessageToLog(syncMsg, 1);
+                    TradingPosition = expectedPos;
+                    if (expectedPos == 0) { EntryBarIndex = 0; EntrySpreadZ = 0.0; EntryTotalPnL = 0.0; }
+                }
+            }
+
+            // --- Manual trade P&L (not account total from OpenProfitLoss) ---
+            double tradePnL = 0.0;
+            if (TradingPosition != 0 && leg1Valid && leg2Valid)
+            {
+                double dpp1 = (leg1Sym.GetChars()[0] == 'M') ? 2.0 : 20.0;
+                double dpp2 = (leg2Sym.GetChars()[0] == 'M') ? 0.5 : 5.0;
+                tradePnL = ((double)NQClose - (double)Leg1Pos.AveragePrice) * realQty1 * dpp1
+                         + ((double)YMClose - (double)Leg2Pos.AveragePrice) * realQty2 * dpp2;
             }
 
             // --- Execute pending order ---
@@ -1402,107 +1515,169 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
             {
                 SCString logMsg;
 
-                // --- BUY SPREAD (Long NQ, Short YM) ---
-                if (PendingOrderAction == 1 && TradingPosition == 0)
+                // Anti double-click cooldown (10 seconds)
+                double secsSinceLastOrder = (sc.CurrentSystemDateTime.GetAsDouble() - LastOrderTime) * 86400.0;
+                bool cooldownOK = (LastOrderTime == 0.0 || secsSinceLastOrder >= 10.0);
+
+                if (!cooldownOK && PendingOrderAction != 3)  // FLATTEN always allowed
                 {
-                    s_SCNewOrder BuyLeg1;
-                    BuyLeg1.OrderQuantity = leg1Qty;
-                    BuyLeg1.Price1 = 0;
-                    BuyLeg1.OrderType = SCT_ORDERTYPE_MARKET;
-                    BuyLeg1.Symbol = leg1Sym;
-                    BuyLeg1.TextTag = "SpreadBuyNQ";
-                    int ret1 = sc.BuyOrder(BuyLeg1);
-
-                    s_SCNewOrder SellLeg2;
-                    SellLeg2.OrderQuantity = leg2Qty;
-                    SellLeg2.Price1 = 0;
-                    SellLeg2.OrderType = SCT_ORDERTYPE_MARKET;
-                    SellLeg2.Symbol = leg2Sym;
-                    SellLeg2.TextTag = "SpreadSellYM";
-                    int ret2 = sc.SellOrder(SellLeg2);
-
-                    logMsg.Format("BUY SPREAD: Leg1(%s) ret=%d | Leg2(%s) ret=%d",
-                        leg1Sym.GetChars(), ret1, leg2Sym.GetChars(), ret2);
+                    logMsg.Format("COOLDOWN: %.0fs since last order (need 10s)", secsSinceLastOrder);
                     sc.AddMessageToLog(logMsg, 0);
+                }
 
-                    if (ret1 > 0 || ret2 > 0)
+                // --- BUY SPREAD (Long NQ, Short YM) ---
+                else if (PendingOrderAction == 1)
+                {
+                    // Block opposite direction add (already short -> must flatten first)
+                    if (TradingPosition == -1)
                     {
-                        TradingPosition = 1;
-                        EntryBarIndex = sc.Index;
-                        EntrySpreadZ = (double)zScore;
-                        EntryTotalPnL = 0.0;
+                        sc.AddMessageToLog("BUY BLOCKED: already SHORT. FLATTEN first.", 0);
+                    }
+                    else
+                    {
+                        s_SCNewOrder BuyLeg1;
+                        BuyLeg1.OrderQuantity = leg1Qty;
+                        BuyLeg1.Price1 = 0;
+                        BuyLeg1.OrderType = SCT_ORDERTYPE_MARKET;
+                        BuyLeg1.Symbol = leg1Sym;
+                        BuyLeg1.TextTag = "SpreadBuyNQ";
+                        int ret1 = sc.BuyOrder(BuyLeg1);
+
+                        s_SCNewOrder SellLeg2;
+                        SellLeg2.OrderQuantity = leg2Qty;
+                        SellLeg2.Price1 = 0;
+                        SellLeg2.OrderType = SCT_ORDERTYPE_MARKET;
+                        SellLeg2.Symbol = leg2Sym;
+                        SellLeg2.TextTag = "SpreadSellYM";
+                        int ret2 = sc.SellOrder(SellLeg2);
+
+                        logMsg.Format("BUY SPREAD: Leg1(%s) ret=%d | Leg2(%s) ret=%d | pos=%d",
+                            leg1Sym.GetChars(), ret1, leg2Sym.GetChars(), ret2, TradingPosition);
+                        sc.AddMessageToLog(logMsg, 0);
+
+                        if (ret1 > 0 && ret2 > 0)
+                        {
+                            if (TradingPosition == 0)  // New entry from flat
+                            {
+                                EntryBarIndex = sc.Index;
+                                EntrySpreadZ = (double)zScore;
+                                EntryTotalPnL = 0.0;
+                            }
+                            TradingPosition = 1;
+                            LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
+                        }
+                        else if (ret1 > 0 || ret2 > 0)
+                        {
+                            sc.AddMessageToLog("ERROR: One-legged entry! Closing surviving leg.", 1);
+                            if (ret1 > 0) { s_SCNewOrder fix; fix.OrderQuantity = leg1Qty; fix.Price1 = 0; fix.OrderType = SCT_ORDERTYPE_MARKET; fix.Symbol = leg1Sym; sc.SellOrder(fix); }
+                            if (ret2 > 0) { s_SCNewOrder fix; fix.OrderQuantity = leg2Qty; fix.Price1 = 0; fix.OrderType = SCT_ORDERTYPE_MARKET; fix.Symbol = leg2Sym; sc.BuyOrder(fix); }
+                        }
                     }
                 }
 
                 // --- SELL SPREAD (Short NQ, Long YM) ---
-                else if (PendingOrderAction == 2 && TradingPosition == 0)
+                else if (PendingOrderAction == 2)
                 {
-                    s_SCNewOrder SellLeg1;
-                    SellLeg1.OrderQuantity = leg1Qty;
-                    SellLeg1.Price1 = 0;
-                    SellLeg1.OrderType = SCT_ORDERTYPE_MARKET;
-                    SellLeg1.Symbol = leg1Sym;
-                    SellLeg1.TextTag = "SpreadSellNQ";
-                    int ret1 = sc.SellOrder(SellLeg1);
-
-                    s_SCNewOrder BuyLeg2;
-                    BuyLeg2.OrderQuantity = leg2Qty;
-                    BuyLeg2.Price1 = 0;
-                    BuyLeg2.OrderType = SCT_ORDERTYPE_MARKET;
-                    BuyLeg2.Symbol = leg2Sym;
-                    BuyLeg2.TextTag = "SpreadBuyYM";
-                    int ret2 = sc.BuyOrder(BuyLeg2);
-
-                    logMsg.Format("SELL SPREAD: Leg1(%s) ret=%d | Leg2(%s) ret=%d",
-                        leg1Sym.GetChars(), ret1, leg2Sym.GetChars(), ret2);
-                    sc.AddMessageToLog(logMsg, 0);
-
-                    if (ret1 > 0 || ret2 > 0)
+                    // Block opposite direction add (already long -> must flatten first)
+                    if (TradingPosition == 1)
                     {
-                        TradingPosition = -1;
-                        EntryBarIndex = sc.Index;
-                        EntrySpreadZ = (double)zScore;
-                        EntryTotalPnL = 0.0;
+                        sc.AddMessageToLog("SELL BLOCKED: already LONG. FLATTEN first.", 0);
+                    }
+                    else
+                    {
+                        s_SCNewOrder SellLeg1;
+                        SellLeg1.OrderQuantity = leg1Qty;
+                        SellLeg1.Price1 = 0;
+                        SellLeg1.OrderType = SCT_ORDERTYPE_MARKET;
+                        SellLeg1.Symbol = leg1Sym;
+                        SellLeg1.TextTag = "SpreadSellNQ";
+                        int ret1 = sc.SellOrder(SellLeg1);
+
+                        s_SCNewOrder BuyLeg2;
+                        BuyLeg2.OrderQuantity = leg2Qty;
+                        BuyLeg2.Price1 = 0;
+                        BuyLeg2.OrderType = SCT_ORDERTYPE_MARKET;
+                        BuyLeg2.Symbol = leg2Sym;
+                        BuyLeg2.TextTag = "SpreadBuyYM";
+                        int ret2 = sc.BuyOrder(BuyLeg2);
+
+                        logMsg.Format("SELL SPREAD: Leg1(%s) ret=%d | Leg2(%s) ret=%d | pos=%d",
+                            leg1Sym.GetChars(), ret1, leg2Sym.GetChars(), ret2, TradingPosition);
+                        sc.AddMessageToLog(logMsg, 0);
+
+                        if (ret1 > 0 && ret2 > 0)
+                        {
+                            if (TradingPosition == 0)  // New entry from flat
+                            {
+                                EntryBarIndex = sc.Index;
+                                EntrySpreadZ = (double)zScore;
+                                EntryTotalPnL = 0.0;
+                            }
+                            TradingPosition = -1;
+                            LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
+                        }
+                        else if (ret1 > 0 || ret2 > 0)
+                        {
+                            sc.AddMessageToLog("ERROR: One-legged entry! Closing surviving leg.", 1);
+                            if (ret1 > 0) { s_SCNewOrder fix; fix.OrderQuantity = leg1Qty; fix.Price1 = 0; fix.OrderType = SCT_ORDERTYPE_MARKET; fix.Symbol = leg1Sym; sc.BuyOrder(fix); }
+                            if (ret2 > 0) { s_SCNewOrder fix; fix.OrderQuantity = leg2Qty; fix.Price1 = 0; fix.OrderType = SCT_ORDERTYPE_MARKET; fix.Symbol = leg2Sym; sc.SellOrder(fix); }
+                        }
                     }
                 }
 
-                // --- FLATTEN (manual exit) ---
-                else if (PendingOrderAction == 3 && TradingPosition != 0)
+                // --- FLATTEN (uses real positions, always allowed) ---
+                else if (PendingOrderAction == 3)
                 {
-                    s_SCNewOrder CloseLeg1;
-                    CloseLeg1.OrderQuantity = leg1Qty;
-                    CloseLeg1.Price1 = 0;
-                    CloseLeg1.OrderType = SCT_ORDERTYPE_MARKET;
-                    CloseLeg1.Symbol = leg1Sym;
-                    CloseLeg1.TextTag = "SpreadFlatNQ";
-                    // Was LONG = bought NQ -> sell. Was SHORT = sold NQ -> buy.
-                    int ret1;
-                    if (TradingPosition == 1)
-                        ret1 = sc.SellOrder(CloseLeg1);
+                    if (realQty1 == 0 && realQty2 == 0)
+                    {
+                        sc.AddMessageToLog("FLATTEN: already flat (no real positions).", 0);
+                        TradingPosition = 0;
+                        EntryBarIndex = 0;
+                        EntrySpreadZ = 0.0;
+                        EntryTotalPnL = 0.0;
+                    }
                     else
-                        ret1 = sc.BuyOrder(CloseLeg1);
+                    {
+                        int ret1 = 0, ret2 = 0;
 
-                    s_SCNewOrder CloseLeg2;
-                    CloseLeg2.OrderQuantity = leg2Qty;
-                    CloseLeg2.Price1 = 0;
-                    CloseLeg2.OrderType = SCT_ORDERTYPE_MARKET;
-                    CloseLeg2.Symbol = leg2Sym;
-                    CloseLeg2.TextTag = "SpreadFlatYM";
-                    // Was LONG = sold YM -> buy back. Was SHORT = bought YM -> sell.
-                    int ret2;
-                    if (TradingPosition == 1)
-                        ret2 = sc.BuyOrder(CloseLeg2);
-                    else
-                        ret2 = sc.SellOrder(CloseLeg2);
+                        if (realQty1 != 0)
+                        {
+                            s_SCNewOrder CloseLeg1;
+                            CloseLeg1.OrderQuantity = abs(realQty1);
+                            CloseLeg1.Price1 = 0;
+                            CloseLeg1.OrderType = SCT_ORDERTYPE_MARKET;
+                            CloseLeg1.Symbol = leg1Sym;
+                            CloseLeg1.TextTag = "SpreadFlatNQ";
+                            if (realQty1 > 0)
+                                ret1 = sc.SellOrder(CloseLeg1);
+                            else
+                                ret1 = sc.BuyOrder(CloseLeg1);
+                        }
 
-                    logMsg.Format("FLATTEN: Leg1 ret=%d | Leg2 ret=%d | P&L=$%.0f",
-                        ret1, ret2, totalPnL);
-                    sc.AddMessageToLog(logMsg, 0);
+                        if (realQty2 != 0)
+                        {
+                            s_SCNewOrder CloseLeg2;
+                            CloseLeg2.OrderQuantity = abs(realQty2);
+                            CloseLeg2.Price1 = 0;
+                            CloseLeg2.OrderType = SCT_ORDERTYPE_MARKET;
+                            CloseLeg2.Symbol = leg2Sym;
+                            CloseLeg2.TextTag = "SpreadFlatYM";
+                            if (realQty2 > 0)
+                                ret2 = sc.SellOrder(CloseLeg2);
+                            else
+                                ret2 = sc.BuyOrder(CloseLeg2);
+                        }
 
-                    TradingPosition = 0;
-                    EntryBarIndex = 0;
-                    EntrySpreadZ = 0.0;
-                    EntryTotalPnL = 0.0;
+                        logMsg.Format("FLATTEN: Leg1(qty=%d) ret=%d | Leg2(qty=%d) ret=%d | P&L=%.0f",
+                            realQty1, ret1, realQty2, ret2, tradePnL);
+                        sc.AddMessageToLog(logMsg, 0);
+
+                        TradingPosition = 0;
+                        EntryBarIndex = 0;
+                        EntrySpreadZ = 0.0;
+                        EntryTotalPnL = 0.0;
+                        LastOrderTime = sc.CurrentSystemDateTime.GetAsDouble();
+                    }
                 }
 
                 PendingOrderAction = 0;  // Clear pending flag
@@ -1532,10 +1707,10 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                 // B. Dollar Stop
                 if (!shouldFlatten && dollarStop > 0.0f)
                 {
-                    if (totalPnL <= -dollarStop)
+                    if (tradePnL <= -dollarStop)
                     {
                         shouldFlatten = true;
-                        exitReason.Format("DOLLAR STOP: P&L=$%.0f hit -$%.0f", totalPnL, dollarStop);
+                        exitReason.Format("DOLLAR STOP: P&L=$%.0f hit -$%.0f", tradePnL, dollarStop);
                     }
                 }
 
@@ -1560,34 +1735,42 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                     }
                 }
 
-                // Execute auto-flatten
+                // Execute auto-flatten (using real positions)
                 if (shouldFlatten)
                 {
-                    s_SCNewOrder CloseLeg1;
-                    CloseLeg1.OrderQuantity = leg1Qty;
-                    CloseLeg1.Price1 = 0;
-                    CloseLeg1.OrderType = SCT_ORDERTYPE_MARKET;
-                    CloseLeg1.Symbol = leg1Sym;
-                    CloseLeg1.TextTag = "AutoFlatNQ";
-                    if (TradingPosition == 1)
-                        sc.SellOrder(CloseLeg1);
-                    else
-                        sc.BuyOrder(CloseLeg1);
+                    int ret1 = 0, ret2 = 0;
 
-                    s_SCNewOrder CloseLeg2;
-                    CloseLeg2.OrderQuantity = leg2Qty;
-                    CloseLeg2.Price1 = 0;
-                    CloseLeg2.OrderType = SCT_ORDERTYPE_MARKET;
-                    CloseLeg2.Symbol = leg2Sym;
-                    CloseLeg2.TextTag = "AutoFlatYM";
-                    if (TradingPosition == 1)
-                        sc.BuyOrder(CloseLeg2);
-                    else
-                        sc.SellOrder(CloseLeg2);
+                    if (realQty1 != 0)
+                    {
+                        s_SCNewOrder CloseLeg1;
+                        CloseLeg1.OrderQuantity = abs(realQty1);
+                        CloseLeg1.Price1 = 0;
+                        CloseLeg1.OrderType = SCT_ORDERTYPE_MARKET;
+                        CloseLeg1.Symbol = leg1Sym;
+                        CloseLeg1.TextTag = "AutoFlatNQ";
+                        if (realQty1 > 0)
+                            ret1 = sc.SellOrder(CloseLeg1);
+                        else
+                            ret1 = sc.BuyOrder(CloseLeg1);
+                    }
+
+                    if (realQty2 != 0)
+                    {
+                        s_SCNewOrder CloseLeg2;
+                        CloseLeg2.OrderQuantity = abs(realQty2);
+                        CloseLeg2.Price1 = 0;
+                        CloseLeg2.OrderType = SCT_ORDERTYPE_MARKET;
+                        CloseLeg2.Symbol = leg2Sym;
+                        CloseLeg2.TextTag = "AutoFlatYM";
+                        if (realQty2 > 0)
+                            ret2 = sc.SellOrder(CloseLeg2);
+                        else
+                            ret2 = sc.BuyOrder(CloseLeg2);
+                    }
 
                     SCString autoMsg;
-                    autoMsg.Format("AUTO-EXIT: %s. P&L: $%.0f",
-                                   exitReason.GetChars(), totalPnL);
+                    autoMsg.Format("AUTO-EXIT: %s | Leg1(qty=%d) ret=%d | Leg2(qty=%d) ret=%d | P&L=%.0f",
+                                   exitReason.GetChars(), realQty1, ret1, realQty2, ret2, tradePnL);
                     sc.AddMessageToLog(autoMsg, 0);
 
                     TradingPosition = 0;
@@ -1883,35 +2066,52 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
             else leg2Short = leg2SymFull;
         }
 
-        // Get live P&L if in position
+        // Get live trade P&L from real positions (manual calculation)
         double dispPnL = 0.0;
+        int dispQty1 = 0, dispQty2 = 0;
         if (TradingPosition != 0)
         {
             s_SCPositionData L1P, L2P;
             sc.GetTradePositionForSymbolAndAccount(L1P, leg1SymFull, sc.SelectedTradeAccount);
             sc.GetTradePositionForSymbolAndAccount(L2P, leg2SymFull, sc.SelectedTradeAccount);
-            dispPnL = L1P.OpenProfitLoss + L2P.OpenProfitLoss;
+            dispQty1 = L1P.PositionQuantity;
+            dispQty2 = L2P.PositionQuantity;
+
+            // Dollar per point: detect micro (M prefix) vs full-size
+            // NQ=$20/pt, MNQ=$2/pt, YM=$5/pt, MYM=$0.50/pt
+            double dpp1 = (leg1SymFull.GetChars()[0] == 'M') ? 2.0 : 20.0;
+            double dpp2 = (leg2SymFull.GetChars()[0] == 'M') ? 0.5 : 5.0;
+
+            // P&L = (currentPrice - avgPrice) * qty * dollarPerPoint
+            // PositionQuantity is signed (+long, -short), handles direction automatically
+            double leg1PnL = ((double)NQClose - (double)L1P.AveragePrice) * dispQty1 * dpp1;
+            double leg2PnL = ((double)YMClose - (double)L2P.AveragePrice) * dispQty2 * dpp2;
+            dispPnL = leg1PnL + leg2PnL;
         }
 
         SCString TradingText;
         COLORREF tradeBg;
 
+        bool autoEntryOn = (InAutoEntry.GetYesNo() != 0);
+
         if (TradingPosition == 0)
         {
             TradingText.Format(
-                "  TRADING [FLAT]   Auto Exit: %s\n"
-                "  %s x%d | %s x%d | Z Exit: %.2f | $Stop: %.0f",
+                "  FLAT  Auto: %s | Exit: %s\n"
+                "  %s x%d  %s x%d | Z Exit: %.2f | $Stop: %.0f",
+                autoEntryOn ? "ENTRY" : "off",
                 autoExitDisp ? "ON" : "OFF",
                 leg1Short.GetChars(), leg1QtyDisp,
                 leg2Short.GetChars(), leg2QtyDisp,
                 tradingZExitDisp, dollarStopDisp
             );
-            tradeBg = RGB(40, 40, 50);
+            tradeBg = autoEntryOn ? RGB(25, 40, 60) : RGB(40, 40, 50);
         }
         else
         {
-            const char* posLabel = (TradingPosition == 1) ? "LONG SPREAD" : "SHORT SPREAD";
+            const char* posLabel = (TradingPosition == 1) ? "LONG" : "SHORT";
             int barsInTrade = sc.Index - EntryBarIndex;
+            int barsMin = barsInTrade * 5;  // 5min bars -> minutes
 
             // P&L with explicit sign
             SCString pnlStr;
@@ -1921,18 +2121,17 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
                 pnlStr.Format("-$%.0f", fabs(dispPnL));
 
             TradingText.Format(
-                "  TRADING [%s]  Bars: %d  P&L: %s\n"
-                "  Entry Z: %.2f | Z now: %+.2f | $Stop: -$%.0f",
-                posLabel, barsInTrade, pnlStr.GetChars(),
-                (float)EntrySpreadZ, zScore, dollarStopDisp
+                "  %s  %s   %d/%d   %dmin\n"
+                "  Z: %+.2f (entry %+.2f) | $Stop: %.0f",
+                posLabel, pnlStr.GetChars(),
+                dispQty1, dispQty2, barsMin,
+                zScore, (float)EntrySpreadZ, dollarStopDisp
             );
 
-            if (dispPnL > 0.0)
-                tradeBg = RGB(10, 60, 10);
-            else if (dispPnL < -dollarStopDisp * 0.5)
-                tradeBg = RGB(80, 10, 10);
+            if (dispPnL >= 0.0)
+                tradeBg = RGB(30, 100, 170);   // bleu ciel
             else
-                tradeBg = RGB(60, 30, 10);
+                tradeBg = RGB(190, 100, 20);   // orange clair
         }
 
         s_UseTool TradeBox;
@@ -1945,8 +2144,8 @@ SCSFExport scsf_NQ_YM_SpreadMeanReversion(SCStudyInterfaceRef sc)
         TradeBox.UseRelativeVerticalValues = 1;
         TradeBox.Region = sc.GraphRegion;
         TradeBox.Text = TradingText;
-        TradeBox.FontSize = 8;
-        TradeBox.FontBold = 0;
+        TradeBox.FontSize = (TradingPosition != 0) ? 10 : 8;
+        TradeBox.FontBold = (TradingPosition != 0) ? 1 : 0;
         TradeBox.Color = RGB(200, 210, 230);
         TradeBox.FontBackColor = tradeBg;
         TradeBox.TransparentLabelBackground = 0;

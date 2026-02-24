@@ -82,13 +82,17 @@ Gap detection via GetDate()/GetTimeInSeconds() absolus (gere weekends/holidays).
 Parite signaux C++/Python : **99.9%**. Metriques brutes : Spread r=0.996, Z-Score r=0.974, Beta OLS r=0.971.
 Compilation : `F:\SierreChart_Spread_Indices\ACS_Source\VisualCCompile.Bat` -> `Data\NQ_YM_SpreadMeanReversion_64.dll`.
 
-## Phase 2b v1 -- Semi-Auto Trading NQ_YM (VALIDE)
-Fichier : meme cpp (~1930 lignes). Inputs 22-31, PersistentInt 4-6, PersistentDouble 8-9.
-**Trading** : BUY SPREAD / SELL SPREAD / FLATTEN via Input dropdown. 2 jambes simultanees (MNQ + MYM).
-**Auto-exits** : z_exit, dollar stop ($), time stop (CT). Tous configurables via Inputs. Enable Auto Exit toggle.
-**Panel 4 TRADING** : position, P&L live, stops actifs. Couleur verte/rouge/grise selon P&L.
+## Phase 2b -- Semi-Auto Trading NQ_YM (VALIDE)
+Fichier : meme cpp (~2150 lignes). Inputs 22-31, PersistentInt 4-7, PersistentDouble 8-10.
+**Control Bar Buttons** : BUY SP / SELL SP / FLAT SP via ACS_BUTTON_1/2/3. Clic → PendingOrderAction → execution au prochain tick.
+**Auto-Entry** : Input[31] toggle. Detection FLAT→LONG/SHORT sur chaque barre (!sc.IsFullRecalculation). Fonctionne en replay rapide (960X).
+**Auto-Exits** : z_exit, dollar stop ($), time stop (CT). Tous configurables via Inputs. Enable Auto Exit toggle.
+**Scaling** : ajout meme direction autorise. Cooldown 10s anti double-clic. Direction opposee bloquee (FLATTEN first).
+**Position Sync** : `GetTradePositionForSymbolAndAccount()` = source de verite. Desync auto-corrigee. FLATTEN utilise qty reelles.
+**P&L Live** : calcul manuel (AveragePrice × dollarPerPoint × qty). OpenProfitLoss = total compte (inutilisable). Dollar stop utilise tradePnL.
+**Panel TRADING** : bleu (P&L>=0), orange (P&L<0), bold 10pt en position, 8pt flat.
 **Architecture ordres** : `sc.BuyOrder()` / `sc.SellOrder()` avec `.Symbol` explicite (cross-symbol). Deferred order pattern via `PendingOrderAction` (PersistentInt 6) pour eviter -8998 pendant full recalc.
-**Teste en simulation** : BUY/SELL/FLATTEN valides sur Teton CME Routing (Sim1).
+**Teste en replay** : auto-entry + auto-exit valides. BUY/SELL/FLATTEN/scaling valides sur Teton Sim1.
 
 ## Key Conventions
 - Toujours travailler en **venv**
