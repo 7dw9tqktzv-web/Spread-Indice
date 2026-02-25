@@ -422,6 +422,48 @@ Les seuils ADF < -2.86, Hurst < 0.50, Corr > 0.70 sont bases sur la theorie stat
 
 ---
 
+## Pistes d'Amelioration
+
+Axes de recherche identifies pendant la Phase 13c. A explorer sur NQ_YM et/ou d'autres paires.
+
+### Axe 1 : Fenetre post-open (session US active, hors open/close)
+
+**Constat** : Config D concentre 93% du PnL sur 7h-9h CT (pre-open + open US). Apres 9h CT, 13 trades en 5 ans, PnL negatif. Le spread NQ/YM profite du choc de volatilite d'ouverture, pas de la session active.
+
+**Hypothese** : en filtrant uniquement la session US active (09:00-15:00 CT, voire 09:30-14:30 pour exclure open/close), le spread pourrait mean-reverter differemment -- plus lentement, plus regulierement, avec des z_entry plus bas (2.25-2.75).
+
+**Etapes** :
+1. Diagnostic stationnarite par tranche horaire (ADF/Hurst 02-08 vs 09-12 vs 12-15)
+2. Si prometteur : grid 09:00-15:00 avec z_entry [2.00-3.00], delta_tp plus large
+3. Profil attendu : plus de trades, PnL/trade plus faible, distribution temporelle plus equilibree
+
+**Risque** : le spread NQ/YM pourrait tout simplement ne PAS mean-reverter en dehors de l'open. Le diagnostic tranchera.
+
+### Axe 2 : Sortie TP/SL dollar (hybride z-score entree / dollar sortie)
+
+**Constat** : les sorties actuelles sont sur z-score (z_exit=0.50, z_stop=4.75). Le z-score est un proxy statistique, pas un objectif de profit. Un trade peut atteindre +$500 puis retomber a +$200 quand z_exit declenche.
+
+**Hypothese** : entrer sur z-score (signal statistique), sortir sur dollar (risk management). Plus robuste car decouple la sortie de la stationnarite du spread.
+
+**Etapes** :
+1. **Analyse MFE/MAE** (Max Favorable / Max Adverse Excursion) sur les trades existants :
+   - MFE = PnL max atteint pendant le trade (pic de profit)
+   - MAE = PnL min atteint pendant le trade (pire creux)
+   - Scatter MFE vs MAE, distribution, MFE vs PnL final
+2. Identifier les seuils naturels : si 80% des trades atteignent +$300 MFE, TP=$300 capture le gros
+3. Tester des configs hybrides : entree z-score, sortie TP dollar + SL dollar
+4. Comparer PF/WR/DD vs la sortie z-score pure
+
+**Avantage** : le SL dollar ($2,000) est deja prevu dans Sierra. Le TP dollar serait un ajout naturel.
+
+### Axe 3 : Application du framework a NQ_RTY avec binary gates
+
+**Constat** : NQ_RTY OLS a ete valide en Phase 11 avec le scoring continu (Config #8, PF 2.10). Le framework Phase 13c (binary gates + CPCV + delta sigma) n'a pas encore ete applique a cette paire.
+
+**Etapes** : reproduire les Etapes 1-7 de la methodologie avec les constantes NQ_RTY (MULT_A=20, MULT_B=50, etc.). Gate windows potentiellement differentes (ADF_w bimodal a 30/96 sur NQ_YM, probablement different sur NQ_RTY).
+
+---
+
 ## Reference : Config D NQ_YM (validee)
 
 La premiere config produite par ce framework. Parametres et resultats complets dans CHANGELOG.md Phase 13c.
