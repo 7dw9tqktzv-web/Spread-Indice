@@ -13,7 +13,9 @@ build/
 *.obj
 *.exp
 *.lib
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/agent-memory/
 .mcp.json
 
 # Data
