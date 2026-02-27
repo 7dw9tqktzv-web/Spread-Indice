@@ -37,10 +37,13 @@ from src.validation.propfirm import PropfirmConfig, compute_propfirm_metrics
 # Constants
 # ======================================================================
 
-MULT_A, MULT_B = 20.0, 5.0
-TICK_A, TICK_B = 0.25, 1.0
-SLIPPAGE = 1
-COMMISSION = 2.50
+from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
+
+_NQ, _YM = get_pair_specs("NQ", "YM")
+MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
+TICK_A, TICK_B = _NQ.tick_size, _YM.tick_size
+SLIPPAGE = DEFAULT_SLIPPAGE_TICKS
+COMMISSION = _NQ.commission
 INITIAL_CAPITAL = 100_000.0
 FLAT_MIN = 930
 

@@ -28,7 +28,7 @@ from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.signals.generator import generate_signals_numba
 from src.signals.filters import apply_time_stop, apply_window_filter_numba
-from src.backtest.engine import run_backtest_vectorized
+from src.backtest.engine import run_backtest_grid
 from src.validation.gates import GateConfig, compute_gate_mask, apply_gate_filter_numba
 from src.validation.cpcv import CPCVConfig, run_cpcv
 
@@ -36,10 +36,13 @@ from src.validation.cpcv import CPCVConfig, run_cpcv
 # Constants
 # ======================================================================
 
-MULT_A, MULT_B = 20.0, 5.0  # NQ, YM
-TICK_A, TICK_B = 0.25, 1.0
-SLIPPAGE = 1
-COMMISSION = 2.50
+from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
+
+_NQ, _YM = get_pair_specs("NQ", "YM")
+MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
+TICK_A, TICK_B = _NQ.tick_size, _YM.tick_size
+SLIPPAGE = DEFAULT_SLIPPAGE_TICKS
+COMMISSION = _NQ.commission
 INITIAL_CAPITAL = 100_000.0
 FLAT_MIN = 930  # 15:30 CT
 
@@ -184,10 +187,10 @@ def run_ols_adf_batch(args):
                                 sig_gated, minutes, entry_start, entry_end, FLAT_MIN
                             )
 
-                            bt = run_backtest_vectorized(
+                            bt = run_backtest_grid(
                                 px_a, px_b, sig_final, beta,
                                 MULT_A, MULT_B, TICK_A, TICK_B,
-                                SLIPPAGE, COMMISSION, INITIAL_CAPITAL,
+                                SLIPPAGE, COMMISSION,
                             )
 
                             count += 1
@@ -203,9 +206,7 @@ def run_ols_adf_batch(args):
                                 CPCV_CFG,
                             )
 
-                            equity = bt["equity"]
-                            running_max = np.maximum.accumulate(equity)
-                            max_dd = float((equity - running_max).min())
+                            max_dd = bt["max_dd"]
 
                             pnls = bt["trade_pnls"]
                             sharpe_full = 0.0

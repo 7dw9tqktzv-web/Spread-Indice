@@ -29,13 +29,15 @@ from src.signals.filters import (
     _apply_conf_filter_numba, apply_window_filter_numba,
 )
 from src.backtest.engine import run_backtest_vectorized
+from src.config.instruments import get_pair_specs
 
 # ======================================================================
 # Constants — NQ/RTY
 # ======================================================================
 
-MULT_A, MULT_B = 20.0, 50.0   # NQ, RTY
-TICK_A, TICK_B = 0.25, 0.10
+_NQ, _RTY = get_pair_specs("NQ", "RTY")
+MULT_A, MULT_B = _NQ.multiplier, _RTY.multiplier
+TICK_A, TICK_B = _NQ.tick_size, _RTY.tick_size
 SLIPPAGE = 1
 COMMISSION = 2.50
 INITIAL_CAPITAL = 100_000.0

@@ -29,13 +29,15 @@ from src.signals.filters import (
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
+from src.config.instruments import get_pair_specs
 
 # ======================================================================
 # Constants
 # ======================================================================
 # E-mini (reference)
-EMINI_MULT_A, EMINI_MULT_B = 20.0, 50.0
-EMINI_TICK_A, EMINI_TICK_B = 0.25, 0.10
+_NQ, _RTY = get_pair_specs("NQ", "RTY")
+EMINI_MULT_A, EMINI_MULT_B = _NQ.multiplier, _RTY.multiplier
+EMINI_TICK_A, EMINI_TICK_B = _NQ.tick_size, _RTY.tick_size
 EMINI_COMMISSION = 2.50
 
 # Micro contracts (1/10 of E-mini)

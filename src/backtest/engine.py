@@ -351,6 +351,20 @@ def run_backtest_vectorized(
 # Grid-optimized backtest (no equity curve, ~20x faster for grid search)
 # ---------------------------------------------------------------------------
 
+def _max_drawdown_from_trades(pnl_net: np.ndarray) -> float:
+    """Compute max drawdown from trade PnLs (O(num_trades), no equity curve).
+
+    Uses cumulative sum of trade PnLs to find peak-to-trough drawdown.
+    Valid approximation because inter-trade equity is flat.
+    """
+    if len(pnl_net) == 0:
+        return 0.0
+    cum_pnl = np.cumsum(pnl_net)
+    peak = np.maximum.accumulate(cum_pnl)
+    dd = cum_pnl - peak
+    return float(dd.min())
+
+
 def run_backtest_grid(
     px_a: np.ndarray,
     px_b: np.ndarray,
@@ -367,21 +381,34 @@ def run_backtest_grid(
 ) -> dict:
     """Lightweight backtest for grid search — no equity curve, no MtM.
 
-    Returns only trade-level stats: trades, win_rate, pnl, profit_factor,
-    avg_pnl_trade, avg_duration_bars.
+    Returns trade-level stats: trades, win_rate, pnl, profit_factor,
+    avg_pnl_trade, avg_duration_bars, max_dd, plus trade arrays for CPCV.
     """
     te, tx, num_trades = _detect_and_pair_trades(sig)
 
     if num_trades == 0:
-        return dict(_EMPTY_RESULT)
+        return {
+            **_EMPTY_RESULT,
+            "max_dd": 0.0,
+            "trade_pnls": np.array([]),
+            "trade_entry_bars": np.array([], dtype=int),
+            "trade_exit_bars": np.array([], dtype=int),
+            "trade_sides": np.array([], dtype=np.int8),
+        }
 
-    _, tx, _, _, _, _, _, pnl_net, durations = _compute_trades(
+    te, tx, sides, _, _, _, _, pnl_net, durations = _compute_trades(
         px_a, px_b, sig, bt, te, tx, num_trades,
         mult_a, mult_b, tick_a, tick_b,
         slippage_ticks, commission, max_multiplier, dollar_stop,
     )
 
-    return _compute_summary_stats(pnl_net, durations, num_trades)
+    stats = _compute_summary_stats(pnl_net, durations, num_trades)
+    stats["max_dd"] = round(_max_drawdown_from_trades(pnl_net), 2)
+    stats["trade_pnls"] = pnl_net
+    stats["trade_entry_bars"] = te
+    stats["trade_exit_bars"] = tx
+    stats["trade_sides"] = sides
+    return stats
 
 
 # ---------------------------------------------------------------------------

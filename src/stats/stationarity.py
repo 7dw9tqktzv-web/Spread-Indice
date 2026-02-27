@@ -7,10 +7,78 @@ Two implementations:
 
 import numpy as np
 import pandas as pd
+from numba import njit
 from statsmodels.tsa.stattools import adfuller
 
+# --- Simplified ADF (Sierra Chart compatible, numba-compiled) ---
 
-# --- Simplified ADF (Sierra Chart compatible) ---
+@njit(cache=True)
+def _adf_simple_numba(spread_vals, window, step):
+    """Numba-compiled rolling simplified ADF statistic.
+
+    Regression: ΔZ(t) = μ + γ·Z(t-1) + ε
+    ADF statistic = γ / SE(γ)
+    """
+    n = len(spread_vals)
+    result = np.full(n, np.nan)
+    n_pts = window - 1
+
+    for i in range(window, n, step):
+        # Compute sums for OLS in one pass
+        sum_d = 0.0
+        sum_l = 0.0
+        sum_dl = 0.0
+        sum_ll = 0.0
+        count = 0
+
+        for j in range(i - n_pts, i):
+            d_j = spread_vals[j] - spread_vals[j - 1]  # delta
+            l_j = spread_vals[j - 1]  # lag
+            if np.isnan(d_j) or np.isnan(l_j):
+                continue
+            sum_d += d_j
+            sum_l += l_j
+            sum_dl += d_j * l_j
+            sum_ll += l_j * l_j
+            count += 1
+
+        if count < 10:
+            continue
+
+        mean_d = sum_d / count
+        mean_l = sum_l / count
+
+        # ss_l = sum((l - mean_l)^2) = sum_ll - count * mean_l^2
+        ss_l = sum_ll - count * mean_l * mean_l
+        if ss_l <= 0.0:
+            continue
+
+        # gamma = sum((l - mean_l)(d - mean_d)) / ss_l
+        #       = (sum_dl - count * mean_l * mean_d) / ss_l
+        ss_dl = sum_dl - count * mean_l * mean_d
+        gamma = ss_dl / ss_l
+        mu = mean_d - gamma * mean_l
+
+        # Residual sum of squares (second pass)
+        ssr = 0.0
+        for j in range(i - n_pts, i):
+            d_j = spread_vals[j] - spread_vals[j - 1]
+            l_j = spread_vals[j - 1]
+            if np.isnan(d_j) or np.isnan(l_j):
+                continue
+            resid = d_j - mu - gamma * l_j
+            ssr += resid * resid
+
+        variance = ssr / (count - 2) if count > 2 else 0.0
+        if variance <= 0.0:
+            continue
+
+        se_gamma = np.sqrt(variance / ss_l)
+        if se_gamma > 0.0:
+            result[i] = gamma / se_gamma
+
+    return result
+
 
 def adf_statistic_simple(spread: pd.Series, window: int = 24, step: int = 1) -> pd.Series:
     """Rolling simplified ADF statistic (compatible Sierra Chart v1.5).
@@ -20,51 +88,11 @@ def adf_statistic_simple(spread: pd.Series, window: int = 24, step: int = 1) -> 
 
     No augmentation terms (no lag differences).
     Critical value at 5%: -2.86 (reject H0 if stat < -2.86).
+
+    Numba-compiled inner loop for ~20-50x speedup over pure Python.
     """
-    spread_vals = spread.values
-    delta = np.diff(spread_vals, prepend=np.nan)  # ΔZ
-    lag = np.roll(spread_vals, 1)                  # Z(t-1)
-    lag[0] = np.nan
-
-    n = len(spread_vals)
-    result = np.full(n, np.nan)
-    n_pts = window - 1  # pairs (delta, lag) in each window
-
-    for i in range(window, n, step):
-        d = delta[i - n_pts:i]
-        l = lag[i - n_pts:i]
-
-        # Skip if any NaN
-        mask = ~(np.isnan(d) | np.isnan(l))
-        if mask.sum() < 10:
-            continue
-
-        d_clean = d[mask]
-        l_clean = l[mask]
-        n_clean = len(d_clean)
-
-        # OLS: d = mu + gamma * l
-        mean_l = l_clean.mean()
-        mean_d = d_clean.mean()
-        ss_l = np.sum((l_clean - mean_l) ** 2)
-
-        if ss_l == 0:
-            continue
-
-        gamma = np.sum((l_clean - mean_l) * (d_clean - mean_d)) / ss_l
-        mu = mean_d - gamma * mean_l
-
-        # Residuals
-        residuals = d_clean - mu - gamma * l_clean
-        ssr = np.sum(residuals ** 2)
-        variance = ssr / (n_clean - 2) if n_clean > 2 else 0
-
-        if variance <= 0 or ss_l == 0:
-            continue
-
-        se_gamma = np.sqrt(variance / ss_l)
-        if se_gamma > 0:
-            result[i] = gamma / se_gamma
+    spread_vals = np.ascontiguousarray(spread.values, dtype=np.float64)
+    result = _adf_simple_numba(spread_vals, window, step)
 
     out = pd.Series(result, index=spread.index, name="adf_simple")
     if step > 1:

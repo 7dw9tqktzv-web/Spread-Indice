@@ -26,10 +26,13 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
 
-MULT_A, MULT_B = 20.0, 5.0
-TICK_A, TICK_B = 0.25, 1.0
-SLIPPAGE = 1
-COMMISSION = 2.50
+from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
+
+_NQ, _YM = get_pair_specs("NQ", "YM")
+MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
+TICK_A, TICK_B = _NQ.tick_size, _YM.tick_size
+SLIPPAGE = DEFAULT_SLIPPAGE_TICKS
+COMMISSION = _NQ.commission
 
 
 def reconstruct_config_d():
