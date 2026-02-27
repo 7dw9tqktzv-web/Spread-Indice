@@ -288,7 +288,7 @@ def main():
     seen_patterns = set()
     for _, row in micro2.iterrows():
         pattern = (row["alpha_ratio"], row["profil"], row["window"])
-        z_key = (round(row["z_entry"], 2), round(row["z_exit"], 2))
+        (round(row["z_entry"], 2), round(row["z_exit"], 2))
         if pattern not in seen_patterns:
             seen_patterns.add(pattern)
             selected_keys.append(row)

@@ -288,16 +288,14 @@ def main():
     print(f"  {'-' * len(header)}")
 
     # Reference row (D original: ts=0, dsl=1.50)
-    ref = None
 
     for r in sorted(results, key=lambda x: (x["time_stop"], x["delta_sl"])):
         ts_info = r["exit_breakdown"].get("TIME_STOP", {"pct": 0, "avg_pnl": 0, "wr": 0})
-        zs_info = r["exit_breakdown"].get("Z_STOP", {"pct": 0, "count": 0})
+        r["exit_breakdown"].get("Z_STOP", {"pct": 0, "count": 0})
 
         marker = ""
         if r["time_stop"] == 0 and abs(r["delta_sl"] - 1.50) < 0.01:
             marker = " <-- D original"
-            ref = r
 
         print(f"  {r['time_stop']:>3} {r['delta_sl']:>5.2f} {r['z_stop']:>5.2f} | "
               f"{r['trades']:>4} ${r['pnl']:>+8,.0f} {r['pf']:>6.2f} "

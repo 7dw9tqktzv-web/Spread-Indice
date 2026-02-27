@@ -1,9 +1,9 @@
 """Enums and constants for the spread trading system."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class Instrument(str, Enum):
+class Instrument(StrEnum):
     NQ = "NQ"
     ES = "ES"
     RTY = "RTY"
@@ -12,7 +12,7 @@ class Instrument(str, Enum):
     MYM = "MYM"
 
 
-class HedgeMethod(str, Enum):
+class HedgeMethod(StrEnum):
     OLS_ROLLING = "ols_rolling"
     KALMAN = "kalman"
 

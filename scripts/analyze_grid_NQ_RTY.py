@@ -197,7 +197,7 @@ def main():
     # Print as Python dict for validate script
     print("\n  --- PYTHON CONFIG DICT (copy to validate_top_NQ_RTY.py) ---\n")
     print("CONFIGS = {")
-    for i, (pname, row) in enumerate(selected):
+    for _i, (pname, row) in enumerate(selected):
         window_str = row.get("window", "05:00-12:00")
         alpha_val = row.get("alpha", 0)
         print(f'    "K_{pname}": {{')
@@ -219,7 +219,7 @@ def _print_top(df_top, n=10):
 
     cols_to_show = ["alpha", "profile", "window", "z_entry", "z_exit", "z_stop",
                     "min_confidence", "trades", "win_rate", "pnl", "profit_factor", "avg_pnl_trade"]
-    available = [c for c in cols_to_show if c in df_top.columns]
+    [c for c in cols_to_show if c in df_top.columns]
 
     print(f"  {'#':>3} {'alpha':>8} {'profile':<10} {'window':<14} "
           f"{'ze':>6} {'zx':>5} {'zs':>5} {'conf':>4} | "

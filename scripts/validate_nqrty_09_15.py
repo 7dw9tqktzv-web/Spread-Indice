@@ -447,7 +447,7 @@ def plot_hourly_pnl(cfg: ConfigDef, trades_df: pd.DataFrame):
     ax1.set_title(f'{cfg.name} -- PnL by Entry Hour (CT)')
     ax1.grid(True, alpha=0.3, axis='y')
 
-    for i, (h, row) in enumerate(hourly.iterrows()):
+    for _i, (h, row) in enumerate(hourly.iterrows()):
         if row['pnl_sum'] != 0:
             ax1.annotate(f"${row['pnl_sum']:,.0f}",
                         xy=(h, row['pnl_sum']),

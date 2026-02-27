@@ -134,7 +134,7 @@ def run_ols_batch(ols_window):
     px_a = aligned.df["close_a"].values
     px_b = aligned.df["close_b"].values
     idx = aligned.df.index
-    n = len(px_a)
+    len(px_a)
 
     # Precompute minutes array for window filter
     minutes = (idx.hour * 60 + idx.minute).values.astype(np.int32)
@@ -225,7 +225,7 @@ def main():
     parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers")
     args = parser.parse_args()
 
-    total = print_grid_summary()
+    print_grid_summary()
 
     if args.dry_run:
         return

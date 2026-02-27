@@ -476,7 +476,7 @@ def main():
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
             futures = {executor.submit(run_kalman_job, job): job for job in jobs}
             for future in as_completed(futures):
-                job = futures[future]
+                futures[future]
                 completed += 1
                 try:
                     results = future.result()

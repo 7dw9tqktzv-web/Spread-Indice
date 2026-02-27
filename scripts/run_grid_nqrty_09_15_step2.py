@@ -391,7 +391,7 @@ def analyze_best_combos(df: pd.DataFrame):
         return
 
     log.info("\n" + "=" * 70)
-    log.info("TOP 30 CONFIGS (all gates + time stops, trades >= %d)" % MIN_TRADES)
+    log.info(f"TOP 30 CONFIGS (all gates + time stops, trades >= {MIN_TRADES})")
     log.info("=" * 70)
 
     top = viable.nlargest(30, "profit_factor")

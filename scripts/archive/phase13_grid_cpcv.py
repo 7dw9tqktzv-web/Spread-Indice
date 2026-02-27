@@ -239,7 +239,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
     args = parser.parse_args()
 
-    total = print_grid_summary()
+    print_grid_summary()
 
     if args.dry_run:
         print("\n  --dry-run: exiting without running.\n")

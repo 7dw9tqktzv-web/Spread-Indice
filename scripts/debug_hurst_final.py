@@ -345,7 +345,7 @@ def hurst_rolling_exact(spread: np.ndarray, end_index: int, period: int) -> dict
 
     result["H_raw"] = float(H_raw)
     result["H"] = float(np.clip(H_raw, 0.01, 0.99))
-    result["log_lags"] = [math.log(l) for l in lags]
+    result["log_lags"] = [math.log(lag) for lag in lags]
     result["log_taus"] = [math.log(t) if not np.isnan(t) and t > 0 else None for t in tau_vals]
 
     return result
@@ -389,7 +389,7 @@ def compare_at_bar(spread: np.ndarray, end_index: int, period: int,
     print(f"  Python hurst_rolling max_lag = min(period//4, 50) = {r_py_rolling['max_lag']}")
 
     # Tau-by-tau comparison
-    max_lags = max(len(r_cpp["lags"]), len(r_py_single["lags"]))
+    max(len(r_cpp["lags"]), len(r_py_single["lags"]))
     print("\n--- TAU COMPARISON (lag by lag) ---")
     print(f"  {'Lag':>4} | {'C++ tau(ddof1)':>16} | {'Py tau(ddof0)':>16} | {'Roll tau(ddof1)':>16} | {'C++ cnt':>7} | {'Py cnt':>7} | {'Ratio C/P':>10}")
     print(f"  {'-'*95}")
@@ -713,7 +713,7 @@ def definitive_comparison(df: pd.DataFrame):
     """
     spread = df["spread_log"].values
     hurst_cpp_export = df["hurst_cpp"].values
-    n = len(spread)
+    len(spread)
 
     print(f"\n{'='*100}")
     print("DEFINITIVE: What does the user actually observe?")

@@ -600,9 +600,9 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     states = [0, 1, -1]
     labels = ["FLAT", "LONG", "SHORT"]
     print(f"       {'':>8s}  {'PY_FLAT':>8s}  {'PY_LONG':>8s}  {'PY_SHORT':>9s}")
-    for i, (s, sl) in enumerate(zip(states, labels)):
+    for _i, (s, sl) in enumerate(zip(states, labels)):
         row = []
-        for j, (p, pl) in enumerate(zip(states, labels)):
+        for _j, (p, _pl) in enumerate(zip(states, labels)):
             count = ((sc_sig == s) & (py_raw == p)).sum()
             row.append(count)
         print(f"       {f'SC_{sl}':>8s}  {row[0]:>8,}  {row[1]:>8,}  {row[2]:>9,}")
@@ -644,9 +644,9 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     # Confusion matrix for final
     print("\n       Confusion matrix (SC rows, PY columns):")
     print(f"       {'':>8s}  {'PY_FLAT':>8s}  {'PY_LONG':>8s}  {'PY_SHORT':>9s}")
-    for i, (s, sl) in enumerate(zip(states, labels)):
+    for _i, (s, sl) in enumerate(zip(states, labels)):
         row = []
-        for j, (p, pl) in enumerate(zip(states, labels)):
+        for _j, (p, _pl) in enumerate(zip(states, labels)):
             count = ((sc_sig == s) & (py_final == p)).sum()
             row.append(count)
         print(f"       {f'SC_{sl}':>8s}  {row[0]:>8,}  {row[1]:>8,}  {row[2]:>9,}")
@@ -726,7 +726,7 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
         for a_idx, a_dt, a_dir in trades_a:
             best_match = None
             best_dist = tolerance + 1
-            for j, (b_idx, b_dt, b_dir) in enumerate(trades_b):
+            for j, (b_idx, _b_dt, _b_dir) in enumerate(trades_b):
                 if j in used_b:
                     continue
                 dist = abs(a_idx - b_idx)
@@ -920,8 +920,8 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
             print(f"       PY beta range: [{py_beta[valid_b].min():.6f}, {py_beta[valid_b].max():.6f}]")
 
     # --- D4: Data alignment check ---
-    sc_nq = merged.get("sc_nq_close") if "nq_close" in merged.columns else None
-    py_nq = merged.get("py_beta")  # Not NQ close, just placeholder
+    merged.get("sc_nq_close") if "nq_close" in merged.columns else None
+    merged.get("py_beta")  # Not NQ close, just placeholder
 
     print("\n  [D4] Data context:")
     print(f"       Merged window: {merged.index[0]} to {merged.index[-1]}")
@@ -1034,18 +1034,15 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
 
     if status_final == "BOTH_EMPTY":
         print("  Status: BOTH_EMPTY -- Both pipelines agree no trades should fire")
-        trade_verdict = "PASS"
     elif status_final == "ASYMMETRIC":
         sc_only = sc_vs_final.get("sc_only", 0)
         py_only = sc_vs_final.get("py_only", 0)
         total_diff = sc_only + py_only
         if total_diff <= 3:
-            trade_verdict = "PASS"
             print(f"  Status: ASYMMETRIC but marginal ({total_diff} extra trades)")
             print(f"  SC-only: {sc_only}, PY-only: {py_only}")
             print("  Small trade count difference is expected from OLS beta drift")
         else:
-            trade_verdict = "WARN"
             print(f"  Status: ASYMMETRIC ({total_diff} extra trades)")
             print(f"  SC-only: {sc_only}, PY-only: {py_only}")
     elif status_final == "COMPARED":
@@ -1059,9 +1056,8 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
         print(f"  SC-only: {sc_only}, PY-only: {py_only}")
         if not np.isnan(dir_agree):
             print(f"  Direction agreement: {dir_agree:.1f}%")
-        trade_verdict = "PASS" if match_pct >= 80 else ("WARN" if match_pct >= 60 else "FAIL")
     else:
-        trade_verdict = "WARN"
+        pass
 
     # Overall verdict
     print(f"\n  {'='*60}")

@@ -391,7 +391,7 @@ def main():
     # At each step, pick the config that maximizes: score + diversity_bonus
     # diversity_bonus = min_param_distance_to_selected / 8
     selected_indices = []
-    label_to_idx = {l: i for i, l in enumerate(labels)}
+    label_to_idx = {lbl: i for i, lbl in enumerate(labels)}
 
     # First pick: best overall score
     remaining = df_r.sort_values("score", ascending=False).index.tolist()
@@ -455,9 +455,9 @@ def main():
     for j in range(len(selected)):
         print(f" {f'#{j+1}':>4}", end="")
     print()
-    for i, (idx_i, row_i) in enumerate(selected.iterrows()):
+    for i, (_idx_i, row_i) in enumerate(selected.iterrows()):
         print(f"  #{i+1:>3}", end="")
-        for j, (idx_j, row_j) in enumerate(selected.iterrows()):
+        for j, (_idx_j, row_j) in enumerate(selected.iterrows()):
             if i == j:
                 print(f"  {'--':>3}", end="")
             else:
@@ -471,10 +471,10 @@ def main():
     for j in range(len(selected)):
         print(f" {f'#{j+1}':>5}", end="")
     print()
-    for i, (idx_i, row_i) in enumerate(selected.iterrows()):
+    for i, (_idx_i, row_i) in enumerate(selected.iterrows()):
         print(f"  #{i+1:>3}", end="")
         mi = label_to_idx[row_i["label"]]
-        for j, (idx_j, row_j) in enumerate(selected.iterrows()):
+        for j, (_idx_j, row_j) in enumerate(selected.iterrows()):
             mj = label_to_idx[row_j["label"]]
             if i == j:
                 print(f"  {'---':>4}", end="")

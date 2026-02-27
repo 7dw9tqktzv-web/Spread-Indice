@@ -233,7 +233,7 @@ def run_python_pipeline() -> dict:
 
     # Compute spread stddev (rolling std over zscore_window for the spread)
     # The Sierra indicator computes StdDev of spread over the z-score window
-    spread_mu = hedge.spread.rolling(ZSCORE_WINDOW).mean()
+    hedge.spread.rolling(ZSCORE_WINDOW).mean()
     spread_sigma = hedge.spread.rolling(ZSCORE_WINDOW).std()
 
     return {
@@ -589,7 +589,7 @@ def print_diagnostics(merged: pd.DataFrame, sierra: pd.DataFrame, python: dict):
     print("STEP 6: ROOT CAUSE DIAGNOSTICS")
     print(f"{'='*80}")
 
-    hedge = python["hedge"]
+    python["hedge"]
     aligned = python["aligned"]
 
     # 1. OLS Beta: check if difference is systematic or grows with time

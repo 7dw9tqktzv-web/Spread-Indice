@@ -81,7 +81,7 @@ for pair_name, leg_a, leg_b in pairs_info:
     # 4. Spread drift annuel
     yearly_spread = spread.groupby(spread.index.year).agg(["first", "last"])
     drift_annual = []
-    for y, row in yearly_spread.iterrows():
+    for _y, row in yearly_spread.iterrows():
         d = float(row["last"] - row["first"])
         drift_annual.append(d)
     drift_mean = float(np.mean(drift_annual)) if drift_annual else 0

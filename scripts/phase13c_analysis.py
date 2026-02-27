@@ -170,7 +170,7 @@ def run_dsr_analysis(candidates, all_sharpes, aligned, px_a, px_b, idx, minutes)
         pnls = bt["trade_pnls"]
 
         # Use CPCV median Sharpe as observed SR
-        equity = bt["equity"]
+        bt["equity"]
         sharpe_full = 0.0
         if pnls.std() > 1e-12:
             sharpe_full = float(pnls.mean() / pnls.std())
@@ -301,7 +301,11 @@ def run_gate_sensitivity(candidates, aligned, px_a, px_b, idx, minutes):
         raw_signals = generate_signals_numba(zscore, cfg["z_entry"], z_exit, z_stop)
         sig_ts = apply_time_stop(raw_signals, cfg["time_stop"])
 
-        def run_with_gate(adf_w, hurst_w, corr_w):
+        def run_with_gate(
+            adf_w, hurst_w, corr_w,
+            spread=spread, sig_ts=sig_ts,
+            entry_start=entry_start, entry_end=entry_end, beta=beta,
+        ):
             gate_cfg = GateConfig(
                 adf_threshold=GATE_ADF_THRESH,
                 hurst_threshold=GATE_HURST_THRESH,

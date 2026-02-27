@@ -305,7 +305,7 @@ def main():
         label = r["label"]
         tier = r["tier"]
 
-        for size_name, bt, mult_label in [
+        for size_name, bt, _mult_label in [
             ("E-mini", r["emini"], "emini"),
             ("Mx1", r["micro1"], "micro1"),
             ("Mx2", r["micro2"], "micro2"),

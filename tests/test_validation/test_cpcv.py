@@ -119,15 +119,15 @@ class TestFilterTradesByMask:
         entries = np.array([2, 5])
         exits = np.array([4, 6])
         result = filter_trades_by_mask(entries, exits, test_mask)
-        assert result[0] == True  # entry=2 ok, exit=4 ok
-        assert result[1] == False  # entry=5 not in test
+        assert result[0]  # entry=2 ok, exit=4 ok
+        assert not result[1]  # entry=5 not in test
 
     def test_entry_in_test_exit_not(self):
         test_mask = np.array([False, True, True, False, False])
         entries = np.array([1])
         exits = np.array([3])
         result = filter_trades_by_mask(entries, exits, test_mask)
-        assert result[0] == False  # exit=3 not in test
+        assert not result[0]  # exit=3 not in test
 
     def test_empty_trades(self):
         mask = np.ones(10, dtype=bool)

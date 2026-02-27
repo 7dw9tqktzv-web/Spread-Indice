@@ -183,7 +183,7 @@ def build_trade_df(bt, idx, zscore, confidence, sig):
         eb = entry_bars[i]
         xb = exit_bars[i]
         entry_dt = idx[eb]
-        exit_dt = idx[xb]
+        idx[xb]
         duration = xb - eb  # in bars
 
         # Determine exit type

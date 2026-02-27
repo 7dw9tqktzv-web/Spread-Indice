@@ -37,9 +37,9 @@ class TestComputeRegimeMask:
             "half_life": [20] * 3,
         }, index=idx)
         mask = compute_regime_mask(metrics, RegimeFilterConfig())
-        assert mask.iloc[0] == True
-        assert mask.iloc[1] == False  # hurst > 0.45
-        assert mask.iloc[2] == True
+        assert mask.iloc[0]
+        assert not mask.iloc[1]  # hurst > 0.45
+        assert mask.iloc[2]
 
     def test_nan_metric_is_false(self):
         idx = _make_index(2)
@@ -50,8 +50,8 @@ class TestComputeRegimeMask:
             "half_life": [20, 20],
         }, index=idx)
         mask = compute_regime_mask(metrics, RegimeFilterConfig())
-        assert mask.iloc[0] == True
-        assert mask.iloc[1] == False  # NaN → not OK
+        assert mask.iloc[0]
+        assert not mask.iloc[1]  # NaN → not OK
 
 
 class TestApplyRegimeFilter:

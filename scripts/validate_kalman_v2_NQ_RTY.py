@@ -90,8 +90,8 @@ def parse_window(w):
 
 def build_signal(aligned, cfg, mult_a, mult_b, tick_a, tick_b):
     """Build full signal chain for a Kalman config."""
-    px_a = aligned.df["close_a"].values
-    px_b = aligned.df["close_b"].values
+    _px_a = aligned.df["close_a"].values
+    _px_b = aligned.df["close_b"].values
     idx = aligned.df.index
 
     est = create_estimator("kalman", alpha_ratio=cfg["alpha"],
@@ -170,12 +170,12 @@ def walk_forward(aligned, cfg, mult_a, mult_b, tick_a, tick_b,
     results = []
     for w_start, is_end, oos_end, is_mask, oos_mask in windows:
         # IS backtest
-        is_idx = np.where(is_mask)[0]
+        np.where(is_mask)[0]
         bt_is = run_bt(px_a[is_mask], px_b[is_mask], sig[is_mask], beta[is_mask],
                        mult_a, mult_b, tick_a, tick_b)
 
         # OOS backtest
-        oos_idx = np.where(oos_mask)[0]
+        np.where(oos_mask)[0]
         bt_oos = run_bt(px_a[oos_mask], px_b[oos_mask], sig[oos_mask], beta[oos_mask],
                         mult_a, mult_b, tick_a, tick_b)
 
@@ -292,7 +292,7 @@ def main():
 
         # L/S
         sides = bt_full["trade_sides"]
-        pnls = bt_full["trade_pnls"]
+        bt_full["trade_pnls"]
         long_pct = float((sides > 0).sum()) / bt_full["trades"] * 100 if bt_full["trades"] > 0 else 50
 
         log.info(f"  FULL: {bt_full['trades']} trades, WR={bt_full['win_rate']:.1f}%, "

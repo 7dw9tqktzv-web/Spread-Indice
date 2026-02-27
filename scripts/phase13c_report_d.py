@@ -80,15 +80,19 @@ def classify_exits(entries, exits, sides, zscore, z_exit, z_stop,
         eb, xb = entries[i], exits[i]
         m = minutes[xb]
         if m >= flat_min or m < entry_start:
-            types.append("FLAT"); continue
+            types.append("FLAT")
+            continue
         if time_stop > 0 and (xb - eb) >= time_stop:
-            types.append("TIME_STOP"); continue
+            types.append("TIME_STOP")
+            continue
         z = zscore[xb] if xb < len(zscore) else np.nan
         if not np.isnan(z):
             if sides[i] == 1 and z < -z_stop:
-                types.append("Z_STOP"); continue
+                types.append("Z_STOP")
+                continue
             if sides[i] == -1 and z > z_stop:
-                types.append("Z_STOP"); continue
+                types.append("Z_STOP")
+                continue
         types.append("Z_EXIT")
     return types
 
@@ -96,8 +100,11 @@ def classify_exits(entries, exits, sides, zscore, z_exit, z_stop,
 def max_consec_losses(pnls):
     mc = c = 0
     for p in pnls:
-        if p <= 0: c += 1; mc = max(mc, c)
-        else: c = 0
+        if p <= 0:
+            c += 1
+            mc = max(mc, c)
+        else:
+            c = 0
     return mc
 
 

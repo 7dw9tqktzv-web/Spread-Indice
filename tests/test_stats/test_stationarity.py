@@ -58,7 +58,7 @@ def test_step_greater_than_one_ffills():
         z[i] = 0.5 * z[i - 1] + rng.standard_normal()
 
     spread = _make_series(z)
-    result_step1 = adf_statistic_simple(spread, window=50, step=1)
+    adf_statistic_simple(spread, window=50, step=1)
     result_step5 = adf_statistic_simple(spread, window=50, step=5)
 
     # Step 5 should have forward-filled values (not NaN) at non-step positions

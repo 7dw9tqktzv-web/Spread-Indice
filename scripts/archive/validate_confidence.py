@@ -136,7 +136,7 @@ def section_temporal(aligned):
     sides = bt["trade_sides"]
 
     entry_times = idx[te]
-    exit_times = idx[tx]
+    idx[tx]
 
     print(f"\n Total: {n_trades} trades, PnL ${bt['pnl']:,.0f}, PF {bt['profit_factor']:.2f}")
     print(f" Periode: {entry_times[0].strftime('%Y-%m-%d')} -> {entry_times[-1].strftime('%Y-%m-%d')}")
@@ -347,7 +347,7 @@ def section_isoos(aligned):
         print(f"   Avg duration: {bt['avg_duration_bars']:.1f} bars ({bt['avg_duration_bars'] * 5 / 60:.1f}h)")
         return bt
 
-    bt_is = run_and_report("IN-SAMPLE (60%)", is_aligned)
+    run_and_report("IN-SAMPLE (60%)", is_aligned)
     bt_oos = run_and_report("OUT-OF-SAMPLE (40%)", oos_aligned)
 
     # Verdict
@@ -632,7 +632,7 @@ def section_walkforward(aligned):
     oos_results = []
     all_oos_pnls = []
 
-    for i, (is_start, is_end, oos_start, oos_end) in enumerate(windows):
+    for i, (_is_start, _is_end, oos_start, oos_end) in enumerate(windows):
         # Slice OOS data
         oos_mask = (idx >= oos_start) & (idx < oos_end)
         oos_df = df.loc[oos_mask].copy()
@@ -736,7 +736,6 @@ def section_propfirm(aligned, oos_pnls=None):
     # Propfirm parameters
     target_pnl = 75_000.0    # target annuel ($300/jour * 250 jours)
     max_dd = 5_000.0          # max drawdown
-    trades_per_year = 252     # ~1 trade/jour (94 trades / 5 ans ~ 19/an, mais on simule plus)
     n_sims = 10_000
 
     # Estimate realistic trades per year from data
@@ -807,7 +806,7 @@ def section_propfirm(aligned, oos_pnls=None):
     n_trades_month = max(n_trades_sim // 12, 1)
     month_hits = 0
     month_dd = 0
-    for sim in range(n_sims):
+    for _sim in range(n_sims):
         trade_seq = rng.choice(pnls, size=n_trades_month, replace=True)
         cum_pnl = np.cumsum(trade_seq)
         peak = 0.0

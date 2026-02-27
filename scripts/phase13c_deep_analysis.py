@@ -318,8 +318,8 @@ def run_autopsy(all_data, idx, minutes):
         print(f"  {'=' * 85}")
 
         # --- Direction ---
-        n_long = (sides == 1).sum()
-        n_short = (sides == -1).sum()
+        (sides == 1).sum()
+        (sides == -1).sum()
         for label, mask_val in [("LONG", 1), ("SHORT", -1)]:
             m = sides == mask_val
             cnt = m.sum()
@@ -486,7 +486,7 @@ def run_wf_folds(all_data, idx):
               f"{'PnL':>10} {'PF':>7} {'WR':>6} {'Status':>7}")
 
         fold_list = []
-        for fi, (is_s, is_e, oos_s, oos_e) in enumerate(folds):
+        for fi, (_is_s, _is_e, oos_s, oos_e) in enumerate(folds):
             oos_mask = (entries >= oos_s) & (exits <= oos_e)
             oos_pnls = pnls[oos_mask]
             oos_n = len(oos_pnls)

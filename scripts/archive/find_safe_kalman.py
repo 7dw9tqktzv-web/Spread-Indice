@@ -94,7 +94,7 @@ def run_full_detailed(aligned, px_a, px_b, idx, minutes, row, years):
     pnls = bt["trade_pnls"]
     equity = bt["equity"]
     entry_bars = bt["trade_entry_bars"]
-    exit_bars = bt["trade_exit_bars"]
+    bt["trade_exit_bars"]
 
     # ── MaxDD from equity curve ──
     running_max = np.maximum.accumulate(equity)

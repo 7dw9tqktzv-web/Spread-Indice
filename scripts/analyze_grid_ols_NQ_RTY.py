@@ -228,7 +228,7 @@ def main():
     # Print as Python dict for validate script
     print("\n  --- PYTHON CONFIG DICT (for validate script) ---\n")
     print("CONFIGS_OLS_NQ_RTY = {")
-    for i, (pname, row) in enumerate(selected):
+    for _i, (pname, row) in enumerate(selected):
         window_str = row.get("window", "05:00-12:00")
         print(f'    "OLS_{pname}": {{')
         print(f'        "ols_window": {row.get("ols_window", 0):.0f},')

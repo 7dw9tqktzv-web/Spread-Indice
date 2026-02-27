@@ -226,7 +226,7 @@ def section_c(df):
     # Cross-filter: configs qui passent 3+ filtres
     print("\n\n  --- CONFIGS MULTI-FILTRES (passent >= 3 filtres) ---")
     config_scores = {}
-    for fname, sub in all_selected.items():
+    for _fname, sub in all_selected.items():
         for key in sub["key"].values:
             config_scores[key] = config_scores.get(key, 0) + 1
 
@@ -279,7 +279,7 @@ def section_d(df, all_selected, multi_keys):
 
     # Pool: union of all filter results + multi-filter configs
     pool_keys = set()
-    for fname, sub in all_selected.items():
+    for _fname, sub in all_selected.items():
         pool_keys.update(sub["key"].head(50).values)
     pool_keys.update(multi_keys)
 
@@ -402,16 +402,16 @@ def main():
     print(f"Trades range: {int(df.trades.min())} - {int(df.trades.max())}")
 
     # Section A
-    sweet_spots = section_a(df)
+    section_a(df)
 
     # Section B
-    best_combos = section_b(df)
+    section_b(df)
 
     # Section C
     all_selected, multi_keys = section_c(df)
 
     # Section D
-    candidates = section_d(df, all_selected, multi_keys)
+    section_d(df, all_selected, multi_keys)
 
     elapsed = time_mod.time() - t_start
     print(f"\n\nAnalyse complete en {elapsed:.0f}s")

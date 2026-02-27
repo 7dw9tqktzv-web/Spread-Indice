@@ -240,11 +240,11 @@ def main():
             print(f"\n  {side_name}: 0 trades")
             continue
         w = sub[sub["pnl"] > 0]
-        l = sub[sub["pnl"] <= 0]
+        losers = sub[sub["pnl"] <= 0]
         print(f"\n  {side_name}: {len(sub)} trades, WR {len(w)/len(sub)*100:.1f}%, "
               f"PnL ${sub['pnl'].sum():,.0f}, AvgPnL ${sub['pnl'].mean():,.0f}")
         print(f"    Winners: {len(w)}, avg ${w['pnl'].mean():,.0f}" if len(w) > 0 else "    Winners: 0")
-        print(f"    Losers:  {len(l)}, avg ${l['pnl'].mean():,.0f}" if len(l) > 0 else "    Losers: 0")
+        print(f"    Losers:  {len(losers)}, avg ${losers['pnl'].mean():,.0f}" if len(losers) > 0 else "    Losers: 0")
 
     # ================================================================
     # LOSING TRADES DEEP DIVE

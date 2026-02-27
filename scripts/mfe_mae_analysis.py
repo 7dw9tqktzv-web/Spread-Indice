@@ -371,7 +371,7 @@ def make_charts(valid):
     mfe = valid["mfe"].values
     mae = valid["mae"].values
     pnl = valid["pnl_5min"].values
-    sides = valid["side"].values
+    _sides = valid["side"].values
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle("Config D -- MFE/MAE Analysis (1s resolution)", fontsize=14, fontweight="bold")
