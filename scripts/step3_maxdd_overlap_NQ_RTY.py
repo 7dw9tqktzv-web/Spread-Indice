@@ -19,18 +19,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
-from src.data.alignment import AlignedPair
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 # ======================================================================
 # Constants NQ/RTY
@@ -298,7 +299,7 @@ def main():
                 overlap_matrix[i, j] = len(common) / min(len(days_i), len(days_j)) * 100
 
     # Find high-overlap pairs
-    print(f"\n  Paires avec overlap > 50%:")
+    print("\n  Paires avec overlap > 50%:")
     print(f"  {'Config A':<48} {'Config B':<48} {'Overlap%':>8}")
     print(f"  {'-'*110}")
 
@@ -334,7 +335,7 @@ def main():
         label_map = {"SAFE": "MaxDD < $5K (propfirm OK)", "WARN": "MaxDD $5K-$7K (micro x2)", "DANGER": "MaxDD > $7K (micro only)"}
         print(f"\n  --- {tier}: {label_map[tier]} ({len(tier_df)} configs) ---")
         if len(tier_df) == 0:
-            print(f"  (aucune)")
+            print("  (aucune)")
             continue
         print(f"  {'Label':<48} {'Trd':>4} {'WR%':>5} {'PnL':>9} {'PF':>5} "
               f"{'Shrp':>6} {'MaxDD':>9} {'Calm':>5} {'-Yr':>3}")
@@ -449,7 +450,7 @@ def main():
               f"{r['long_pct']:>5.1f} {r['score']:>5.3f}")
 
     # Parameter diversity matrix
-    print(f"\n  --- Matrice de distance parametrique (sur 8) ---")
+    print("\n  --- Matrice de distance parametrique (sur 8) ---")
     print(f"  {'':>5}", end="")
     for j in range(len(selected)):
         print(f" {f'#{j+1}':>4}", end="")
@@ -465,7 +466,7 @@ def main():
         print()
 
     # Overlap between selected (informational)
-    print(f"\n  --- Overlap trading-day entre selectionnees (informatif) ---")
+    print("\n  --- Overlap trading-day entre selectionnees (informatif) ---")
     print(f"  {'':>5}", end="")
     for j in range(len(selected)):
         print(f" {f'#{j+1}':>5}", end="")
@@ -480,10 +481,10 @@ def main():
             else:
                 ov = overlap_matrix[mi, mj]
                 print(f" {ov:>5.0f}", end="")
-        print(f" %")
+        print(" %")
 
     # Yearly decomposition
-    print(f"\n  --- Decomposition annuelle ---")
+    print("\n  --- Decomposition annuelle ---")
     all_years = sorted(set(y for r in results for y in r["yearly"].keys()))
     header = f"  {'#':>3} {'Tier':<6} {'Label':<35}"
     for y in all_years:
@@ -507,13 +508,13 @@ def main():
         print(line)
 
     # Diversity summary
-    print(f"\n  --- Diversite parametrique ---")
+    print("\n  --- Diversite parametrique ---")
     for col in ["ols", "zw", "profile", "window", "z_entry", "z_exit", "z_stop", "conf"]:
         vals = selected[col].unique()
         print(f"  {col}: {len(vals)} unique -> {sorted(vals) if col not in ['profile', 'window'] else list(vals)}")
 
     # Tier summary
-    print(f"\n  --- Repartition par tier ---")
+    print("\n  --- Repartition par tier ---")
     for tier in ["SAFE", "WARN", "DANGER"]:
         tier_sel = selected[selected["tier"] == tier]
         if len(tier_sel) > 0:

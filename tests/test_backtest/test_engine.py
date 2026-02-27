@@ -1,16 +1,12 @@
 """Unit tests for backtest engine."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src.backtest.engine import (
     BacktestConfig,
     BacktestEngine,
-    BacktestResult,
     InstrumentSpec,
-    Trade,
-    _apply_slippage,
 )
 
 

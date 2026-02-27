@@ -19,14 +19,15 @@ KEY DIFFERENCES TO CHECK:
 Author: debug session 2026-02-23
 """
 
+import math
+import os
+import sys
+
 import numpy as np
 import pandas as pd
-import math
-import sys
-import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.stats.hurst import hurst_exponent, hurst_rolling
+from src.stats.hurst import hurst_rolling
 
 
 # =============================================================================
@@ -35,7 +36,7 @@ from src.stats.hurst import hurst_exponent, hurst_rolling
 def parse_sierra_export(filepath: str) -> pd.DataFrame:
     """Parse Sierra spreadsheet export (tab-separated, reverse chronological)."""
     rows = []
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         lines = f.readlines()
 
     header_line = lines[1].strip().split("\t")
@@ -367,7 +368,7 @@ def compare_at_bar(spread: np.ndarray, end_index: int, period: int,
     r_py_default = hurst_python_exact(spread, end_index, period, max_lag_override=20)
     r_py_rolling = hurst_rolling_exact(spread, end_index, period)
 
-    print(f"\n--- RESULTS SUMMARY ---")
+    print("\n--- RESULTS SUMMARY ---")
     print(f"  Sierra export (C++ actual):     H = {cpp_hurst_from_export:.6f}")
     print(f"  C++ simulation (Python):        H = {r_cpp['H']:.6f}  (raw: {r_cpp.get('H_raw', 'N/A')})")
     print(f"  Python hurst_exponent(maxlag={period//4}):  H = {r_py_single['H']:.6f}  (raw: {r_py_single.get('H_raw', 'N/A')})")
@@ -379,17 +380,17 @@ def compare_at_bar(spread: np.ndarray, end_index: int, period: int,
     print(f"\n  C++ sim matches Sierra export: {'YES' if cpp_sim_match else 'NO (MISMATCH!)'}")
     if not cpp_sim_match:
         print(f"    Delta = {r_cpp['H'] - cpp_hurst_from_export:.6f}")
-        print(f"    This suggests float32 precision or data ordering issue in export")
+        print("    This suggests float32 precision or data ordering issue in export")
 
     # Key diagnostic: ddof=0 vs ddof=1
-    print(f"\n--- KEY DIFFERENCE: ddof=0 (Python np.std) vs ddof=1 (C++ sample std) ---")
+    print("\n--- KEY DIFFERENCE: ddof=0 (Python np.std) vs ddof=1 (C++ sample std) ---")
     print(f"  C++ max_lag = period//4 = {r_cpp['max_lag']}")
-    print(f"  Python hurst_exponent default max_lag = 20")
+    print("  Python hurst_exponent default max_lag = 20")
     print(f"  Python hurst_rolling max_lag = min(period//4, 50) = {r_py_rolling['max_lag']}")
 
     # Tau-by-tau comparison
     max_lags = max(len(r_cpp["lags"]), len(r_py_single["lags"]))
-    print(f"\n--- TAU COMPARISON (lag by lag) ---")
+    print("\n--- TAU COMPARISON (lag by lag) ---")
     print(f"  {'Lag':>4} | {'C++ tau(ddof1)':>16} | {'Py tau(ddof0)':>16} | {'Roll tau(ddof1)':>16} | {'C++ cnt':>7} | {'Py cnt':>7} | {'Ratio C/P':>10}")
     print(f"  {'-'*95}")
 
@@ -424,7 +425,7 @@ def compare_at_bar(spread: np.ndarray, end_index: int, period: int,
         print(f"\n  Expected tau ratio (ddof=1/ddof=0) for n={n_diffs_lag2}: {expected_ratio:.6f}")
         print(f"  For period=64, this is sqrt(62/61) = {math.sqrt(62/61):.6f}")
         print(f"  This is a {(expected_ratio - 1) * 100:.2f}% difference in tau")
-        print(f"  Impact on H: minimal (constant multiplier on all taus => same slope)")
+        print("  Impact on H: minimal (constant multiplier on all taus => same slope)")
 
 
 # =============================================================================
@@ -437,12 +438,12 @@ def compare_with_backtest_pipeline(df: pd.DataFrame):
     print(f"{'='*100}")
 
     try:
-        from src.data.loader import load_instrument
-        from src.data.cleaner import clean_bars
-        from src.data.resampler import resample_bars
         from src.data.alignment import align_pair
-        from src.hedge.ols_rolling import OLSRollingEstimator, OLSRollingConfig
-        from src.metrics.dashboard import compute_all_metrics, MetricsConfig
+        from src.data.cleaner import clean_bars
+        from src.data.loader import load_instrument
+        from src.data.resampler import resample_bars
+        from src.hedge.ols_rolling import OLSRollingConfig, OLSRollingEstimator
+        from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 
         nq = load_instrument("NQ")
         ym = load_instrument("YM")
@@ -485,7 +486,7 @@ def compare_with_backtest_pipeline(df: pd.DataFrame):
         if len(common_idx) > 0:
             # Sample comparison
             sample_idx = common_idx[-20:]
-            print(f"\n  --- Matched comparison (last 20 common timestamps) ---")
+            print("\n  --- Matched comparison (last 20 common timestamps) ---")
             print(f"  {'Datetime':>20} | {'Sierra Spr':>12} | {'Py Spr':>12} | {'Spr Diff':>12} | {'Sierra H':>9} | {'Py H roll':>9} | {'Py H dash':>9}")
             print(f"  {'-'*100}")
 
@@ -565,7 +566,7 @@ def test_on_synthetic():
     r_py = hurst_python_exact(ou, end_idx, period, max_lag_override=period // 4)
     r_roll = hurst_rolling_exact(ou, end_idx, period)
 
-    print(f"\n  OU process (theta=0.05, sigma=0.1):")
+    print("\n  OU process (theta=0.05, sigma=0.1):")
     print(f"    C++ (ddof=1):          H = {r_cpp['H']:.6f} (raw: {r_cpp.get('H_raw', 'N/A')})")
     print(f"    Python single (ddof=0): H = {r_py['H']:.6f} (raw: {r_py.get('H_raw', 'N/A')})")
     print(f"    Python rolling (ddof=1): H = {r_roll['H']:.6f} (raw: {r_roll.get('H_raw', 'N/A')})")
@@ -577,7 +578,7 @@ def test_on_synthetic():
     r_py = hurst_python_exact(rw, end_idx, period, max_lag_override=period // 4)
     r_roll = hurst_rolling_exact(rw, end_idx, period)
 
-    print(f"\n  Random Walk:")
+    print("\n  Random Walk:")
     print(f"    C++ (ddof=1):          H = {r_cpp['H']:.6f}")
     print(f"    Python single (ddof=0): H = {r_py['H']:.6f}")
     print(f"    Python rolling (ddof=1): H = {r_roll['H']:.6f}")
@@ -588,11 +589,11 @@ def test_on_synthetic():
     r_cpp = hurst_cpp_exact(small_ou, end_idx, period)
     r_py = hurst_python_exact(small_ou, end_idx, period, max_lag_override=period // 4)
 
-    print(f"\n  Small-scale OU (x0.001, range ~0.001):")
+    print("\n  Small-scale OU (x0.001, range ~0.001):")
     print(f"    C++ (ddof=1):          H = {r_cpp['H']:.6f}")
     print(f"    Python single (ddof=0): H = {r_py['H']:.6f}")
     print(f"    DELTA: {abs(r_cpp['H'] - r_py['H']):.6f}")
-    print(f"    (Scale doesn't matter for Hurst -- log(c*tau) = log(c) + log(tau), constant shifts out)")
+    print("    (Scale doesn't matter for Hurst -- log(c*tau) = log(c) + log(tau), constant shifts out)")
 
 
 # =============================================================================
@@ -610,7 +611,7 @@ def find_root_cause(df: pd.DataFrame):
 
     # HYPOTHESIS 1: The C++ simulation matches Sierra export
     # (i.e., the algorithm is correct, but parameters differ)
-    print(f"\n--- HYPOTHESIS 1: Does C++ simulation match Sierra export? ---")
+    print("\n--- HYPOTHESIS 1: Does C++ simulation match Sierra export? ---")
     mismatches = 0
     matches = 0
     for pos in range(64, n, 100):
@@ -625,64 +626,64 @@ def find_root_cause(df: pd.DataFrame):
 
     print(f"  Matches: {matches}, Mismatches: {mismatches}")
     if mismatches == 0:
-        print(f"  --> C++ simulation MATCHES Sierra export perfectly")
-        print(f"  --> The issue is NOT in the C++ algorithm")
+        print("  --> C++ simulation MATCHES Sierra export perfectly")
+        print("  --> The issue is NOT in the C++ algorithm")
     else:
-        print(f"  --> Some mismatches found -- may be float32 precision")
+        print("  --> Some mismatches found -- may be float32 precision")
 
     # HYPOTHESIS 2: Python hurst_rolling uses DIFFERENT parameters
-    print(f"\n--- HYPOTHESIS 2: Python vs C++ parameter differences ---")
-    print(f"  C++ CalculateHurstVR:")
-    print(f"    - period (window) = 64 (from InHurstWindow input)")
-    print(f"    - max_lag = period // 4 = 16")
-    print(f"    - std uses ddof=1 (sample variance)")
-    print(f"    - slope via manual OLS (sum of logs)")
-    print(f"")
-    print(f"  Python hurst_exponent (single-shot):")
-    print(f"    - max_lag = 20 (default), NOT period // 4 = 16")
-    print(f"    - std uses ddof=0 (population variance) <-- DIFFERENT!")
-    print(f"    - slope via np.polyfit")
-    print(f"")
-    print(f"  Python hurst_rolling (used in backtest):")
-    print(f"    - window = 64 (from MetricsConfig.hurst_window)")
-    print(f"    - max_lag = min(window // 4, 50) = 16")
-    print(f"    - std uses ddof=1 (pd.rolling().std())")
-    print(f"    - slope via analytical formula (same as manual OLS)")
-    print(f"")
-    print(f"  KEY PARAMETER DIFFERENCES:")
-    print(f"    1. max_lag: C++ = 16, Python single = 20, Python rolling = 16")
-    print(f"    2. ddof: C++ = 1, Python single = 0, Python rolling = 1")
-    print(f"    3. But ddof doesn't change the slope (constant factor on all taus)")
-    print(f"    4. max_lag difference affects which lags are in the regression")
+    print("\n--- HYPOTHESIS 2: Python vs C++ parameter differences ---")
+    print("  C++ CalculateHurstVR:")
+    print("    - period (window) = 64 (from InHurstWindow input)")
+    print("    - max_lag = period // 4 = 16")
+    print("    - std uses ddof=1 (sample variance)")
+    print("    - slope via manual OLS (sum of logs)")
+    print("")
+    print("  Python hurst_exponent (single-shot):")
+    print("    - max_lag = 20 (default), NOT period // 4 = 16")
+    print("    - std uses ddof=0 (population variance) <-- DIFFERENT!")
+    print("    - slope via np.polyfit")
+    print("")
+    print("  Python hurst_rolling (used in backtest):")
+    print("    - window = 64 (from MetricsConfig.hurst_window)")
+    print("    - max_lag = min(window // 4, 50) = 16")
+    print("    - std uses ddof=1 (pd.rolling().std())")
+    print("    - slope via analytical formula (same as manual OLS)")
+    print("")
+    print("  KEY PARAMETER DIFFERENCES:")
+    print("    1. max_lag: C++ = 16, Python single = 20, Python rolling = 16")
+    print("    2. ddof: C++ = 1, Python single = 0, Python rolling = 1")
+    print("    3. But ddof doesn't change the slope (constant factor on all taus)")
+    print("    4. max_lag difference affects which lags are in the regression")
 
     # HYPOTHESIS 3: The spread values are DIFFERENT
-    print(f"\n--- HYPOTHESIS 3: Are the spread values different between Sierra and Python? ---")
-    print(f"  Sierra spread = log(NQ) - beta * log(YM) - alpha  (computed per-bar, OLS lookback=3300)")
-    print(f"  Python spread = same formula, same OLS lookback=3300")
-    print(f"  BUT: Sierra uses float32 for spread storage, Python uses float64")
-    print(f"  AND: Sierra OLS may use slightly different data alignment")
+    print("\n--- HYPOTHESIS 3: Are the spread values different between Sierra and Python? ---")
+    print("  Sierra spread = log(NQ) - beta * log(YM) - alpha  (computed per-bar, OLS lookback=3300)")
+    print("  Python spread = same formula, same OLS lookback=3300")
+    print("  BUT: Sierra uses float32 for spread storage, Python uses float64")
+    print("  AND: Sierra OLS may use slightly different data alignment")
 
     # HYPOTHESIS 4: Hurst_rolling produces different values because of WINDOW semantics
-    print(f"\n--- HYPOTHESIS 4: Window semantics in hurst_rolling ---")
-    print(f"  Python hurst_rolling with window=64:")
-    print(f"    - At position i, computes Hurst on bars [i-63, i] (64 bars)")
-    print(f"    - But the rolling std for lag k uses rolling window = (64 - k)")
-    print(f"    - So for lag=2, rolling std is over 62 bars ENDING at position i")
-    print(f"    - This means each lag uses a SLIGHTLY DIFFERENT set of bars!")
-    print(f"")
-    print(f"  C++ CalculateHurstVR with period=64:")
-    print(f"    - startIdx = endIndex - 63")
-    print(f"    - For each lag, iterates i from startIdx to endIndex - lag")
-    print(f"    - Count of diffs = period - lag = 64 - lag")
-    print(f"    - All diffs start from startIdx (same starting point)")
-    print(f"")
-    print(f"  BOTH use the same starting point. The only difference is:")
-    print(f"    - C++: std(spread[i+lag] - spread[i] for i in [start, end-lag])")
-    print(f"    - Python rolling: std(spread[t] - spread[t-lag] for t in rolling window)")
-    print(f"    - These are the SAME diffs, just different notation")
+    print("\n--- HYPOTHESIS 4: Window semantics in hurst_rolling ---")
+    print("  Python hurst_rolling with window=64:")
+    print("    - At position i, computes Hurst on bars [i-63, i] (64 bars)")
+    print("    - But the rolling std for lag k uses rolling window = (64 - k)")
+    print("    - So for lag=2, rolling std is over 62 bars ENDING at position i")
+    print("    - This means each lag uses a SLIGHTLY DIFFERENT set of bars!")
+    print("")
+    print("  C++ CalculateHurstVR with period=64:")
+    print("    - startIdx = endIndex - 63")
+    print("    - For each lag, iterates i from startIdx to endIndex - lag")
+    print("    - Count of diffs = period - lag = 64 - lag")
+    print("    - All diffs start from startIdx (same starting point)")
+    print("")
+    print("  BOTH use the same starting point. The only difference is:")
+    print("    - C++: std(spread[i+lag] - spread[i] for i in [start, end-lag])")
+    print("    - Python rolling: std(spread[t] - spread[t-lag] for t in rolling window)")
+    print("    - These are the SAME diffs, just different notation")
 
     # ACTUAL quantitative comparison
-    print(f"\n--- QUANTITATIVE TEST: C++ sim vs Python rolling on Sierra data ---")
+    print("\n--- QUANTITATIVE TEST: C++ sim vs Python rolling on Sierra data ---")
     deltas = []
     test_bars = list(range(200, n, 50))
     for pos in test_bars:
@@ -696,7 +697,7 @@ def find_root_cause(df: pd.DataFrame):
     print(f"  Mean delta (C++ - Python rolling): {np.nanmean(deltas):.6f}")
     print(f"  Std delta:  {np.nanstd(deltas):.6f}")
     print(f"  Max |delta|: {np.nanmax(np.abs(deltas)):.6f}")
-    print(f"  Correlation: check below")
+    print("  Correlation: check below")
 
     # The C++ sim uses same ddof=1 as hurst_rolling.
     # If they match closely, the discrepancy is in the SPREAD, not the algorithm.
@@ -738,7 +739,7 @@ def definitive_comparison(df: pd.DataFrame):
     print(f"    H > 0.5: {np.sum(valid_h > 0.5)} ({100*np.sum(valid_h > 0.5)/len(valid_h):.1f}%)")
 
     # Now compute Python hurst_rolling on the SAME Sierra spread
-    print(f"\n  Computing Python hurst_rolling(window=64) on Sierra spread...")
+    print("\n  Computing Python hurst_rolling(window=64) on Sierra spread...")
     spread_series = pd.Series(spread)
     py_hurst = hurst_rolling(spread_series, window=64, step=1)
     valid_py = py_hurst.dropna().values
@@ -752,7 +753,7 @@ def definitive_comparison(df: pd.DataFrame):
     print(f"    P90:    {np.percentile(valid_py, 90):.4f}")
 
     # Direct comparison at same indices
-    print(f"\n  --- Direct bar-by-bar comparison ---")
+    print("\n  --- Direct bar-by-bar comparison ---")
     # Both arrays are indexed from 0 (chronological)
     valid_both = ~np.isnan(py_hurst.values) & ~np.isnan(hurst_cpp_export) & (hurst_cpp_export > 0)
     if valid_both.sum() > 0:
@@ -771,29 +772,29 @@ def definitive_comparison(df: pd.DataFrame):
         # If the correlation is high and mean_diff is small,
         # then the algorithms agree and the issue is elsewhere
         if corr > 0.95 and abs_diff < 0.05:
-            print(f"\n    ** ALGORITHMS AGREE on the same data **")
-            print(f"    The 'H~0.01 vs H~0.4' discrepancy is NOT an algorithm bug.")
-            print(f"    It's either:")
-            print(f"    a) Different SPREAD values (different OLS params or data)")
-            print(f"    b) The user is comparing different time periods")
-            print(f"    c) The Python 'H~0.4' is a median over 5+ years, not the current bar")
+            print("\n    ** ALGORITHMS AGREE on the same data **")
+            print("    The 'H~0.01 vs H~0.4' discrepancy is NOT an algorithm bug.")
+            print("    It's either:")
+            print("    a) Different SPREAD values (different OLS params or data)")
+            print("    b) The user is comparing different time periods")
+            print("    c) The Python 'H~0.4' is a median over 5+ years, not the current bar")
         elif corr > 0.8:
-            print(f"\n    ** ALGORITHMS MOSTLY AGREE but systematic offset **")
+            print("\n    ** ALGORITHMS MOSTLY AGREE but systematic offset **")
             print(f"    Mean shift = {mean_diff:.6f}")
         else:
-            print(f"\n    ** ALGORITHMS DISAGREE -- likely a real bug **")
+            print("\n    ** ALGORITHMS DISAGREE -- likely a real bug **")
 
             # Find largest disagreements
             diffs = py_vals - cpp_vals
             worst_idx = np.argsort(np.abs(diffs))[-5:]
-            print(f"\n    Worst 5 disagreements:")
+            print("\n    Worst 5 disagreements:")
             bar_indices = np.where(valid_both)[0]
             for wi in worst_idx:
                 bi = bar_indices[wi]
                 print(f"      Bar {bi}: C++={cpp_vals[wi]:.6f}, Py={py_vals[wi]:.6f}, diff={diffs[wi]:.6f}")
 
     # Also test: what if we run Python hurst_rolling with DIFFERENT window?
-    print(f"\n  --- Python hurst_rolling with different windows ---")
+    print("\n  --- Python hurst_rolling with different windows ---")
     for window in [64, 128, 256]:
         py_h_w = hurst_rolling(spread_series, window=window, step=1)
         valid_w = py_h_w.dropna().values
@@ -819,7 +820,7 @@ def test_float32_impact(df: pd.DataFrame):
     # where LogNQ, LogYM are also float32
     # beta and alpha are float
 
-    print(f"\n  Spread precision loss (float64 -> float32):")
+    print("\n  Spread precision loss (float64 -> float32):")
     for i in [n-1, n-100, n-500, n-1000]:
         if i < 0:
             continue
@@ -829,7 +830,7 @@ def test_float32_impact(df: pd.DataFrame):
 
     # Compute Hurst on both
     period = 64
-    print(f"\n  Hurst comparison (float64 vs float32 spread):")
+    print("\n  Hurst comparison (float64 vs float32 spread):")
     for pos in [n-1, n-100, n-500, n-2000, n-5000]:
         if pos < period:
             continue

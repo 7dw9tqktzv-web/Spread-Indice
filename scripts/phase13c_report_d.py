@@ -11,9 +11,9 @@ from collections import Counter
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
 
@@ -29,7 +29,7 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-from src.validation.neighborhood import get_neighbor_configs, compute_neighborhood_robustness
+from src.validation.neighborhood import compute_neighborhood_robustness, get_neighbor_configs
 from src.validation.propfirm import PropfirmConfig, compute_propfirm_metrics
 
 # ======================================================================
@@ -745,7 +745,7 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
     print(f"\n  Report saved to: {output_path}")
-    print(f"  Open in browser to view.")
+    print("  Open in browser to view.")
 
 
 if __name__ == "__main__":

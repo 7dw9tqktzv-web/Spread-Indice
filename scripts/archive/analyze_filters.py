@@ -6,21 +6,20 @@ Config robuste: OLS=2640, ZW=36, z_entry=3.0, z_exit=1.5, z_stop=4.0, profil=tre
 
 import sys
 from pathlib import Path
+
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import SignalConfig, SignalGenerator
 from src.signals.filters import ConfidenceConfig, compute_confidence
-from src.backtest.engine import run_backtest_vectorized
-
+from src.signals.generator import SignalConfig, SignalGenerator
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # Seuils individuels pour les filtres de régime
 ADF_THRESH = -2.86      # stat ADF < seuil = stationnaire

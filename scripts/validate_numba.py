@@ -10,13 +10,15 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.signals.generator import generate_signals_numba, SignalGenerator, SignalConfig
+from src.backtest.engine import run_backtest_grid, run_backtest_vectorized
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_time_stop, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized, run_backtest_grid
-
+from src.signals.generator import generate_signals_numba
 
 # ============================================================
 # Original Python implementations (reference)

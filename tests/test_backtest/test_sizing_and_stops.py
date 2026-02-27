@@ -2,16 +2,14 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
-from src.sizing.position import find_optimal_multiplier
 from src.backtest.engine import (
     BacktestConfig,
     BacktestEngine,
     InstrumentSpec,
     _apply_dollar_stop,
 )
-
+from src.sizing.position import find_optimal_multiplier
 
 # ─── find_optimal_multiplier ─────────────────────────────────────────
 

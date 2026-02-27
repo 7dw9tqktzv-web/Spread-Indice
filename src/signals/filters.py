@@ -9,7 +9,6 @@ from numba import njit
 
 from src.utils.time_utils import SessionConfig
 
-
 # ---------------------------------------------------------------------------
 # Legacy binary filter config (kept for backward compatibility with tests)
 # ---------------------------------------------------------------------------

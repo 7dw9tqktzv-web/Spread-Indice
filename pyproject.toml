@@ -15,6 +15,7 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = [
+    "E402",   # module import not at top -- scripts need sys.path.insert() before src imports
     "E501",   # line too long -- handled by formatter when needed
     "B905",   # zip without strict -- not relevant for numpy/pandas patterns
 ]

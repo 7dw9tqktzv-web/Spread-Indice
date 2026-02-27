@@ -18,8 +18,10 @@ from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
@@ -173,7 +175,7 @@ def main():
               f"{d.min():>8.0f} {d.max():>8.0f} {d.std():>8.0f}")
 
     # Duration distribution
-    print(f"\n  Distribution des durees (tous trades):")
+    print("\n  Distribution des durees (tous trades):")
     bins = [0, 30, 60, 120, 240, 480, 1000, 9999]
     labels_d = ["<30min", "30-60m", "1-2h", "2-4h", "4-8h", "8h-16h", ">16h"]
     trades["dur_bin"] = pd.cut(trades["duration_min"], bins=bins, labels=labels_d)
@@ -256,7 +258,7 @@ def main():
     print(f"  Perte moyenne: ${losers['pnl'].mean():,.0f}")
 
     # Exit type of losers
-    print(f"\n  Repartition des pertes par type de sortie:")
+    print("\n  Repartition des pertes par type de sortie:")
     loser_exit = losers.groupby("exit_type").agg(
         count=("pnl", "size"),
         total_pnl=("pnl", "sum"),
@@ -272,7 +274,7 @@ def main():
               f"{row['pct_loss']:>6.1f}% ${row['avg_pnl']:>8,.0f} {row['avg_dur']:>7.0f}m")
 
     # Side of losers
-    print(f"\n  Pertes par direction:")
+    print("\n  Pertes par direction:")
     for side_val, side_name in [(1, "LONG"), (-1, "SHORT")]:
         sub = losers[losers["side"] == side_val]
         if len(sub) > 0:
@@ -282,17 +284,17 @@ def main():
     # Year of losers
     losers_copy = losers.copy()
     losers_copy["year"] = losers_copy["entry_date"].dt.year
-    print(f"\n  Pertes par annee:")
+    print("\n  Pertes par annee:")
     for y, grp in losers_copy.groupby("year"):
         print(f"    {y}: {len(grp)} trades, ${grp['pnl'].sum():,.0f} (avg ${grp['pnl'].mean():,.0f})")
 
     # Hour of losers
-    print(f"\n  Pertes par heure d'entree:")
+    print("\n  Pertes par heure d'entree:")
     for h, grp in losers.groupby("entry_hour"):
         print(f"    {h:02d}h: {len(grp)} trades, ${grp['pnl'].sum():,.0f}")
 
     # List all losing trades
-    print(f"\n  Liste complete des trades perdants:")
+    print("\n  Liste complete des trades perdants:")
     print(f"  {'#':>3} {'Entry':>18} {'Exit':>18} {'Side':>5} {'Dur':>6} {'PnL':>9} {'ExitType':<10} "
           f"{'EntryZ':>7} {'ExitZ':>7}")
     print("  " + "-" * 100)

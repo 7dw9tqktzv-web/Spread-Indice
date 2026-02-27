@@ -13,12 +13,16 @@ from collections import Counter
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+
+# ======================================================================
+# Constants (D's fixed parameters)
+# ======================================================================
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_time_stop, apply_window_filter_numba
@@ -27,12 +31,6 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-
-# ======================================================================
-# Constants (D's fixed parameters)
-# ======================================================================
-
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -341,7 +339,7 @@ def main():
     dsl_150 = [r for r in results if abs(r["delta_sl"] - 1.50) < 0.01]
     dsl_150.sort(key=lambda x: x["time_stop"])
 
-    print(f"\n  Comparing time_stops at delta_sl=1.50 (z_stop=4.75):\n")
+    print("\n  Comparing time_stops at delta_sl=1.50 (z_stop=4.75):\n")
     print(f"  {'ts':>3} | {'#':>4} {'PF':>6} {'WR':>5} {'DD':>8} {'W/L':>5} "
           f"{'Worst':>7} {'MC':>3} | {'CPCV':>6} {'P+%':>5} | "
           f"{'%ts_exit':>8} {'ts_avg$':>8} {'ALERT':>10}")
@@ -433,7 +431,7 @@ def main():
     print(f"  CPCV median {best['cpcv_med']:.4f} | {best['cpcv_pct_pos']:.0f}% paths+")
 
     # Exit breakdown
-    print(f"\n  Exit breakdown:")
+    print("\n  Exit breakdown:")
     for etype in ["Z_EXIT", "Z_STOP", "TIME_STOP", "FLAT"]:
         info = best["exit_breakdown"].get(etype, {"count": 0})
         if info["count"] > 0:

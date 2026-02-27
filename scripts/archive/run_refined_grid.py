@@ -21,17 +21,20 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_grid
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_time_stop, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_grid
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants
@@ -106,7 +109,7 @@ def print_grid_summary():
     print(f" confidence:      {CONFS}  ({n_conf})")
     print(f" time_stop:       {TIME_STOPS}  ({n_ts})")
     print(f" windows:         {[w[0] for w in WINDOWS]}  ({n_win})")
-    print(f" flat:            15:30 CT")
+    print(" flat:            15:30 CT")
     print()
     print(f" Pipeline combos (OLS × ZW):          {n_pipeline}")
     print(f" Valid signal combos (e×x×s):          {valid_signal} / {n_entry * n_exit * n_stop}")

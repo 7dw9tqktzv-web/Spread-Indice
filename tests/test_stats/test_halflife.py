@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.stats.halflife import half_life, half_life_rolling
 

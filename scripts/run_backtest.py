@@ -37,7 +37,7 @@ from src.signals.filters import (
 )
 from src.signals.generator import SignalConfig, SignalGenerator
 from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument, RAW_FILE_PATTERN
+from src.utils.constants import RAW_FILE_PATTERN, Instrument
 from src.utils.time_utils import SessionConfig, parse_session_config
 
 log = logging.getLogger("backtest")

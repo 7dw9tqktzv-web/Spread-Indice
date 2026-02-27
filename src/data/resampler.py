@@ -1,6 +1,5 @@
 """Resample 1-minute bars to target frequency OHLCV."""
 
-import pandas as pd
 
 from src.data.loader import BarData
 

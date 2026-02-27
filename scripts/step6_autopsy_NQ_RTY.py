@@ -17,14 +17,15 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
     apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
@@ -224,7 +225,7 @@ def main():
               f"{rty_s:>10,.0f} {rty_e:>10,.0f} {rty_ret:>+7.1f}% {div:>+10.1f}%")
 
     # Spread stats per year
-    print(f"\n  --- Spread log-ratio stats par annee ---")
+    print("\n  --- Spread log-ratio stats par annee ---")
     log_ratio = np.log(close_a / close_b)
     print(f"  {'Year':>6} {'Mean':>8} {'Std':>8} {'Drift':>8} {'Range':>8}")
     print(f"  {'-'*45}")
@@ -306,7 +307,7 @@ def main():
                 pnl=("pnl", "sum"),
                 wins=("pnl", lambda x: (x > 0).sum()),
             ).reset_index()
-            print(f"\n    Direction: ", end="")
+            print("\n    Direction: ", end="")
             for _, d in dir_stats.iterrows():
                 dwr = d["wins"] / d["trades"] * 100 if d["trades"] > 0 else 0
                 print(f"{d['direction']} {d['trades']}t/${d['pnl']:+,.0f} WR{dwr:.0f}%  ", end="")
@@ -319,14 +320,14 @@ def main():
             ).reset_index()
             toxic_hours = hour_stats[hour_stats["pnl"] < -500]
             if len(toxic_hours) > 0:
-                print(f"    Heures toxiques: ", end="")
+                print("    Heures toxiques: ", end="")
                 for _, h in toxic_hours.iterrows():
                     print(f"{h['entry_hour']}h (${h['pnl']:+,.0f})  ", end="")
                 print()
 
             # Biggest losers
             worst = year_trades.nsmallest(3, "pnl")
-            print(f"    Top 3 pertes:")
+            print("    Top 3 pertes:")
             for _, w in worst.iterrows():
                 print(f"      {w['entry_dt'].strftime('%Y-%m-%d %H:%M')} {w['direction']} "
                       f"dur={w['duration_bars']}bars ${w['pnl']:+,.0f}")
@@ -354,7 +355,7 @@ def main():
                     neg_year_data[y] = []
                 neg_year_data[y].append((label, p))
 
-    print(f"\n  Annees negatives par config:")
+    print("\n  Annees negatives par config:")
     for y in sorted(neg_year_data.keys()):
         configs_neg = neg_year_data[y]
         print(f"\n  {y}: {len(configs_neg)} configs negatives")
@@ -362,7 +363,7 @@ def main():
             print(f"    {lbl:<48} ${pnl:>+8,.0f}")
 
     # Count configs negative per year
-    print(f"\n  Resume:")
+    print("\n  Resume:")
     print(f"  {'Year':>6} {'Neg configs':>12} {'Avg loss':>10}")
     print(f"  {'-'*35}")
     for y in sorted(neg_year_data.keys()):

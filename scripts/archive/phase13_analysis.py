@@ -26,10 +26,10 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.deflated_sharpe import compute_dsr_for_config
-from src.validation.gates import GateConfig, compute_gate_mask, apply_gate_filter_numba
+from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
 from src.validation.neighborhood import (
-    get_neighbor_configs,
     compute_neighborhood_robustness,
+    get_neighbor_configs,
 )
 from src.validation.propfirm import PropfirmConfig, compute_propfirm_metrics
 

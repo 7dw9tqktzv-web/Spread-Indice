@@ -21,6 +21,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+
+# ======================================================================
+# Constants
+# ======================================================================
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_time_stop, apply_window_filter_numba
@@ -28,12 +33,6 @@ from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-
-# ======================================================================
-# Constants
-# ======================================================================
-
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -252,7 +251,7 @@ def run_overlay(all_data, idx):
             print(f"    Same direction in overlap: {same_dir}/{n_ol1}")
 
     # Activity by year
-    print(f"\n  --- Trades by Year ---")
+    print("\n  --- Trades by Year ---")
     print(f"  {'Year':>6}", end="")
     for name in names:
         print(f"  {name+' #':>7} {name+' $':>10}", end="")
@@ -270,7 +269,7 @@ def run_overlay(all_data, idx):
         print()
 
     # Activity by hour
-    print(f"\n  --- Trades by Entry Hour ---")
+    print("\n  --- Trades by Entry Hour ---")
     print(f"  {'Hour':>6}", end="")
     for name in names:
         print(f"  {name:>6}", end="")
@@ -340,7 +339,7 @@ def run_autopsy(all_data, idx, minutes):
         )
         exit_counts = Counter(exit_types)
 
-        print(f"\n    Exit Types:")
+        print("\n    Exit Types:")
         for etype in ["Z_EXIT", "Z_STOP", "TIME_STOP", "FLAT"]:
             cnt = exit_counts.get(etype, 0)
             if cnt == 0:
@@ -359,7 +358,7 @@ def run_autopsy(all_data, idx, minutes):
         avg_loss = float(losers.mean()) if len(losers) > 0 else 0
         wl_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else float("inf")
 
-        print(f"\n    Win/Loss:")
+        print("\n    Win/Loss:")
         print(f"      Avg winner:    ${avg_win:>+9,.0f}  ({len(winners)} trades)")
         print(f"      Avg loser:     ${avg_loss:>+9,.0f}  ({len(losers)} trades)")
         print(f"      W/L ratio:     {wl_ratio:.2f}")
@@ -369,7 +368,7 @@ def run_autopsy(all_data, idx, minutes):
         dur_win = durations[pnls > 0]
         dur_loss = durations[pnls <= 0]
 
-        print(f"\n    Duration (5min bars):")
+        print("\n    Duration (5min bars):")
         print(f"      All:     avg={durations.mean():.1f}  "
               f"median={np.median(durations):.0f}  max={durations.max()}")
         if len(dur_win) > 0:
@@ -384,7 +383,7 @@ def run_autopsy(all_data, idx, minutes):
         total_losses = float(sorted_pnl[sorted_pnl < 0].sum())
         max_consec = max_consecutive_losses(pnls)
 
-        print(f"\n    Drawdown Concentration:")
+        print("\n    Drawdown Concentration:")
         print(f"      Worst trade:       ${sorted_pnl[0]:>+9,.0f}")
         if len(sorted_pnl) >= 3:
             w3 = float(sorted_pnl[:3].sum())
@@ -402,7 +401,7 @@ def run_autopsy(all_data, idx, minutes):
         # --- Distribution by Year ---
         entry_dates = pd.DatetimeIndex(idx[entries])
 
-        print(f"\n    By Year:")
+        print("\n    By Year:")
         print(f"    {'Year':>6} {'#':>5} {'PnL':>10} {'WR':>5} {'Avg':>8}")
         for year in sorted(set(entry_dates.year)):
             m = entry_dates.year == year
@@ -413,7 +412,7 @@ def run_autopsy(all_data, idx, minutes):
 
         # --- Distribution by Day of Week ---
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri"]
-        print(f"\n    By Day of Week:")
+        print("\n    By Day of Week:")
         print(f"    {'Day':>5} {'#':>5} {'PnL':>10} {'WR':>5}")
         for d in range(5):
             m = entry_dates.dayofweek == d
@@ -426,7 +425,7 @@ def run_autopsy(all_data, idx, minutes):
         # --- Distribution by Month ---
         month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        print(f"\n    By Month:")
+        print("\n    By Month:")
         print(f"    {'Mon':>5} {'#':>5} {'PnL':>10} {'WR':>5}")
         for mo in range(1, 13):
             m = entry_dates.month == mo
@@ -437,7 +436,7 @@ def run_autopsy(all_data, idx, minutes):
                       f"{(mp>0).sum()/mn*100:>4.0f}%")
 
         # --- Distribution by Entry Hour ---
-        print(f"\n    By Entry Hour:")
+        print("\n    By Entry Hour:")
         print(f"    {'Hour':>6} {'#':>5} {'PnL':>10} {'WR':>5}")
         for h in range(2, 16):
             m = entry_dates.hour == h
@@ -549,7 +548,7 @@ def run_decision_matrix(all_data, wf_results):
     print(" DECISION MATRIX (thresholds fixed ex ante)")
     print("=" * 100)
 
-    print(f"\n  Pre-set thresholds:")
+    print("\n  Pre-set thresholds:")
     print(f"    Overlap:     > {THRESHOLDS['overlap_doublon']}% = DOUBLON, "
           f"> {THRESHOLDS['overlap_partial']}% = PARTIAL")
     print(f"    Worst trade: < ${THRESHOLDS['worst_trade_kill']:,} = KILL, "

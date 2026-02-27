@@ -1,11 +1,10 @@
 """Tests for performance metrics computation."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src.backtest.engine import BacktestConfig, BacktestResult, Trade
-from src.backtest.performance import PerformanceMetrics, compute_performance
+from src.backtest.performance import compute_performance
 
 
 def _make_trade(pnl_net, entry_bar=0, exit_bar=1):

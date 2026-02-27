@@ -11,22 +11,24 @@ import time as time_mod
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_time_stop, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants
@@ -388,7 +390,7 @@ def main():
               f"{r['pf']:>6.2f} {r['sharpe']:>7.2f} ${r.get('avg_pnl', 0):>6,.0f}")
 
     # Also test on config C (max volume) since volume is the concern
-    print(f"\n  --- Aussi sur Config C (Max Volume) ---")
+    print("\n  --- Aussi sur Config C (Max Volume) ---")
     cfg_c = CONFIGS["C_Max_Volume"]
     hf_results_c = test_hourly_filter(aligned, px_a, px_b, idx, minutes, cfg_c, "C_Max_Volume")
     print(f"\n  {'Filter':<12} {'Trd':>5} {'WR%':>6} {'PnL':>10} {'PF':>6} {'Sharpe':>7} {'Avg$':>7}")
@@ -398,7 +400,7 @@ def main():
               f"{r['pf']:>6.2f} {r['sharpe']:>7.2f} ${r.get('avg_pnl', 0):>6,.0f}")
 
     # Also test time stop on config C
-    print(f"\n\n  --- Time Stop Refinement — Config C ---")
+    print("\n\n  --- Time Stop Refinement — Config C ---")
     ts_results_c = test_time_stop_refinement(aligned, px_a, px_b, idx, minutes, cfg_c, "C_Max_Volume")
     print(f"\n  {'TS':>4} {'Trd':>5} {'WR%':>6} {'PnL':>10} {'PF':>6} {'Sharpe':>7} {'Avg$':>7} {'AvgDur':>6}")
     print(f"  {'-'*55}")

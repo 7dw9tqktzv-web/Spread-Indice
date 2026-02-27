@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 
 from src.data.alignment import AlignedPair
 from src.hedge.base import HedgeRatioEstimator, HedgeResult

@@ -1,6 +1,5 @@
 """Unit tests for signal generator (stateful z-score crossing)."""
 
-import numpy as np
 import pandas as pd
 import pytest
 

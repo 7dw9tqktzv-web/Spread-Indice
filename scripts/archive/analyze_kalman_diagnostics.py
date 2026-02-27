@@ -20,23 +20,24 @@ import time as time_mod
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from scipy import stats
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants (same as validate_kalman_top.py)
@@ -134,7 +135,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
     """Analyze P_trace/K_beta vs trade outcomes for one config."""
     n_trades = bt["trades"]
     if n_trades == 0:
-        print(f"  0 trades - skip")
+        print("  0 trades - skip")
         return
 
     entry_bars = bt["trade_entry_bars"]
@@ -159,7 +160,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
     p_win_med = float(np.median(p_at_entry[winners])) if n_win > 0 else 0
     p_loss_med = float(np.median(p_at_entry[losers])) if n_loss > 0 else 0
 
-    print(f"\n  --- 1. P_trace at entry: Winners vs Losers ---")
+    print("\n  --- 1. P_trace at entry: Winners vs Losers ---")
     print(f"  {'':>20} {'Count':>6} {'P_mean':>14} {'P_median':>14}")
     print(f"  {'-' * 58}")
     print(f"  {'Winners':>20} {n_win:>6} {p_win_mean:>14.6e} {p_win_med:>14.6e}")
@@ -178,7 +179,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
               f" {'*** SIGNIFICANT' if u_pval < 0.05 else '(not significant)'}")
 
     # ---- 2. Spearman rank correlation: P_trace percentile vs PnL ----
-    print(f"\n  --- 2. Spearman rank correlation: P_trace at entry vs Trade PnL ---")
+    print("\n  --- 2. Spearman rank correlation: P_trace at entry vs Trade PnL ---")
 
     # Compute percentile rank of P_trace at entry (relative to full P_trace history)
     p_valid = p_trace[~np.isnan(p_trace)]
@@ -197,7 +198,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
           f" {'*** SIGNIFICANT' if pval_raw < 0.05 else '(not significant)'}")
 
     # ---- 2b. DECONFOUNDING: Spearman within each year ----
-    print(f"\n  --- 2b. DECONFOUNDING: Spearman INTRA-ANNEE (retire le confound temporel) ---")
+    print("\n  --- 2b. DECONFOUNDING: Spearman INTRA-ANNEE (retire le confound temporel) ---")
     print(f"  {'Year':>6} {'Trd':>5} {'rho':>8} {'p-value':>9} {'Sig?':>15}")
     print(f"  {'-' * 50}")
 
@@ -222,7 +223,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
         print(f"  Weighted avg intra-year rho: {avg_rho:+.4f}")
 
     # ---- 2c. PARTIAL CORRELATION: P_trace vs PnL controlling for time ----
-    print(f"\n  --- 2c. PARTIAL CORRELATION: P_trace vs PnL | controlling for entry_bar ---")
+    print("\n  --- 2c. PARTIAL CORRELATION: P_trace vs PnL | controlling for entry_bar ---")
     # Partial Spearman: regress out time from both P_trace and PnL, then correlate residuals
     time_ranks = stats.rankdata(entry_bars)
     p_ranks = stats.rankdata(p_at_entry)
@@ -248,19 +249,19 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
     print(f"  Time vs P_trace:            rho={rho_time_p:+.4f}, p={pval_time_p:.4f}")
 
     # Interpretation
-    print(f"\n  --- INTERPRETATION ---")
+    print("\n  --- INTERPRETATION ---")
     if len(intra_rhos) > 0 and avg_rho < -0.05 and pval_partial < 0.10:
-        print(f"  >> P_trace a un pouvoir predictif REEL (intra-annee + partiel) -> P3 viable")
+        print("  >> P_trace a un pouvoir predictif REEL (intra-annee + partiel) -> P3 viable")
         verdict_p3 = "REEL"
     elif len(intra_rhos) > 0 and avg_rho > -0.05:
-        print(f"  >> P_trace est un PROXY TEMPOREL (intra-annee rho ~0) -> P3 inutile")
+        print("  >> P_trace est un PROXY TEMPOREL (intra-annee rho ~0) -> P3 inutile")
         verdict_p3 = "PROXY"
     else:
-        print(f"  >> Signal ambigu -> P3 a risque")
+        print("  >> Signal ambigu -> P3 a risque")
         verdict_p3 = "AMBIGU"
 
     # ---- 3. P_trace by year ----
-    print(f"\n  --- 3. P_trace at entry by year ---")
+    print("\n  --- 3. P_trace at entry by year ---")
     print(f"  {'Year':>6} {'Trd':>5} {'P_mean':>14} {'P_med':>14} {'PnL':>10} {'WR%':>6}")
     print(f"  {'-' * 60}")
 
@@ -273,7 +274,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
               f" ${pnl_y.sum():>9,.0f} {(pnl_y > 0).sum() / mask.sum() * 100:>5.1f}%{flag}")
 
     # ---- 4. P_trace quartile analysis ----
-    print(f"\n  --- 4. P_trace quartile analysis ---")
+    print("\n  --- 4. P_trace quartile analysis ---")
     quartile_bounds = np.percentile(p_at_entry, [25, 50, 75])
     q_labels = ["Q1 (lowest)", "Q2", "Q3", "Q4 (highest)"]
     q_masks = [
@@ -293,7 +294,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
             print(f"  {label:<16} {n_q:>5} ${avg_pnl:>9,.0f} {wr:>5.1f}% ${total:>10,.0f}")
 
     # ---- 5. Top 10 worst trades ----
-    print(f"\n  --- 5. Top 10 worst trades: P_trace at entry ---")
+    print("\n  --- 5. Top 10 worst trades: P_trace at entry ---")
     worst_idx = np.argsort(pnls)[:10]
     print(f"  {'#':>3} {'Date':>12} {'PnL':>10} {'P_trace':>14} {'P_pctile':>9} {'K_beta':>12}")
     print(f"  {'-' * 65}")
@@ -304,7 +305,7 @@ def analyze_config(cfg_name, cfg, bt, p_trace, k_beta, idx):
               f" {p_trace[eb]:>14.6e} {pctile:>8.1f}% {k_beta[eb]:>12.6e}")
 
     # ---- 6. K_beta stability ----
-    print(f"\n  --- 6. K_beta diagnostics ---")
+    print("\n  --- 6. K_beta diagnostics ---")
     k_valid = k_beta[~np.isnan(k_beta)]
     # Split into halves
     half = len(k_valid) // 2
@@ -352,7 +353,7 @@ def main():
     est_ref = create_estimator("kalman", alpha_ratio=ref_cfg["alpha"])
     hr_ref = est_ref.estimate(aligned)
     p_global = hr_ref.diagnostics["P_trace"].dropna()
-    print(f"\nP_trace global stats (K_Balanced reference):")
+    print("\nP_trace global stats (K_Balanced reference):")
     print(f"  mean={p_global.mean():.6e}, std={p_global.std():.6e}")
     print(f"  min={p_global.min():.6e}, max={p_global.max():.6e}")
     print(f"  P25={p_global.quantile(0.25):.6e}, P50={p_global.quantile(0.50):.6e},"
@@ -376,7 +377,7 @@ def main():
     # Summary across all configs
     # ================================================================
     print(f"\n\n{'=' * 100}")
-    print(f" SUMMARY: P_trace as predictor of trade PnL")
+    print(" SUMMARY: P_trace as predictor of trade PnL")
     print(f"{'=' * 100}")
     print(f"\n  {'Config':<14} {'Global rho':>11} {'Intra-yr rho':>13} {'Partial rho':>12} {'p_partial':>10} {'Verdict':>12}")
     print(f"  {'-' * 80}")
@@ -390,11 +391,11 @@ def main():
     n_proxy = sum(1 for r in summary.values() if r["verdict_p3"] == "PROXY")
     print(f"\n  P_trace REEL: {n_real}/{len(summary)}, PROXY temporel: {n_proxy}/{len(summary)}")
     if n_proxy >= 3:
-        print(f"  >> VERDICT FINAL: P_trace est un PROXY TEMPOREL -> P3 INUTILE, passer a P4")
+        print("  >> VERDICT FINAL: P_trace est un PROXY TEMPOREL -> P3 INUTILE, passer a P4")
     elif n_real >= 3:
-        print(f"  >> VERDICT FINAL: P_trace a un pouvoir predictif REEL -> P3 VIABLE")
+        print("  >> VERDICT FINAL: P_trace a un pouvoir predictif REEL -> P3 VIABLE")
     else:
-        print(f"  >> VERDICT FINAL: Signal MIXTE -> P3 a risque, privilegier P4")
+        print("  >> VERDICT FINAL: Signal MIXTE -> P3 a risque, privilegier P4")
 
     elapsed = time_mod.time() - t_start
     print(f"\n{'=' * 100}")

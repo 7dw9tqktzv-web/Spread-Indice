@@ -12,24 +12,25 @@ import time as time_mod
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.cache import load_aligned_pair_cache
-from src.data.alignment import AlignedPair
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
-from src.hedge.factory import create_estimator
-from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
-from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
-)
 from src.backtest.engine import run_backtest_vectorized
 from src.config.instruments import get_pair_specs
+from src.data.alignment import AlignedPair
+from src.data.cache import load_aligned_pair_cache
+from src.hedge.factory import create_estimator
+from src.metrics.dashboard import MetricsConfig, compute_all_metrics
+from src.signals.filters import (
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
+)
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants — NQ/RTY

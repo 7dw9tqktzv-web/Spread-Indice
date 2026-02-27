@@ -25,22 +25,23 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants
@@ -245,7 +246,7 @@ def analyze_dimension_1(df_2023, df_rest):
 
 def analyze_dimension_2(df_2023, df_rest):
     """2. Profil horaire — heure d'entree."""
-    print(f"\n  --- DIM 2: Heure d'entree (2023 vs annees profitables) ---")
+    print("\n  --- DIM 2: Heure d'entree (2023 vs annees profitables) ---")
     print(f"  {'Hour':>6}  {'------ 2023 ------':^28}  {'--- Profitable yrs ---':^28}")
     print(f"  {'':>6}  {'Trd':>5} {'PnL':>9} {'WR%':>6}    {'Trd':>5} {'PnL':>9} {'WR%':>6}")
     print(f"  {'-' * 70}")
@@ -266,7 +267,7 @@ def analyze_dimension_2(df_2023, df_rest):
 
 def analyze_dimension_3(df_2023, df_rest):
     """3. Jour de la semaine."""
-    print(f"\n  --- DIM 3: Jour de la semaine (2023 vs annees profitables) ---")
+    print("\n  --- DIM 3: Jour de la semaine (2023 vs annees profitables) ---")
     print(f"  {'Day':>6}  {'------ 2023 ------':^28}  {'--- Profitable yrs ---':^28}")
     print(f"  {'':>6}  {'Trd':>5} {'PnL':>9} {'WR%':>6}    {'Trd':>5} {'PnL':>9} {'WR%':>6}")
     print(f"  {'-' * 70}")
@@ -285,7 +286,7 @@ def analyze_dimension_3(df_2023, df_rest):
 
 def analyze_dimension_4(df_2023, df_rest):
     """4. Mois."""
-    print(f"\n  --- DIM 4: PnL mensuel 2023 ---")
+    print("\n  --- DIM 4: PnL mensuel 2023 ---")
     print(f"  {'Month':>6} {'Trd':>5} {'PnL':>9} {'WR%':>6} {'Avg PnL':>9}")
     print(f"  {'-' * 40}")
 
@@ -303,7 +304,7 @@ def analyze_dimension_4(df_2023, df_rest):
 
 def analyze_dimension_5(df_2023, df_rest):
     """5. Confidence score a l'entree."""
-    print(f"\n  --- DIM 5: Confidence score a l'entree ---")
+    print("\n  --- DIM 5: Confidence score a l'entree ---")
 
     for label, df in [("2023", df_2023), ("Profitable yrs", df_rest)]:
         if len(df) == 0:
@@ -317,7 +318,7 @@ def analyze_dimension_5(df_2023, df_rest):
               f" median={losers['conf_entry'].median():.1f}%")
 
     # Test: what if confidence threshold was higher in 2023?
-    print(f"\n  Sensitivity: confidence threshold impact on 2023:")
+    print("\n  Sensitivity: confidence threshold impact on 2023:")
     print(f"  {'Threshold':>10} {'Trd':>5} {'PnL':>9} {'WR%':>6} {'Filtered':>9}")
     print(f"  {'-' * 45}")
     for thr in [75, 80, 85, 90, 95]:
@@ -333,7 +334,7 @@ def analyze_dimension_5(df_2023, df_rest):
 
 def analyze_dimension_6(df_2023, df_rest):
     """6. Z-score a l'entree."""
-    print(f"\n  --- DIM 6: Z-score a l'entree ---")
+    print("\n  --- DIM 6: Z-score a l'entree ---")
 
     for label, df in [("2023", df_2023), ("Profitable yrs", df_rest)]:
         if len(df) == 0:
@@ -347,7 +348,7 @@ def analyze_dimension_6(df_2023, df_rest):
               f" median={losers['z_entry'].abs().median():.3f}")
 
     # Distribution
-    print(f"\n  |z| buckets 2023:")
+    print("\n  |z| buckets 2023:")
     print(f"  {'|z| range':>12} {'Trd':>5} {'PnL':>9} {'WR%':>6}")
     print(f"  {'-' * 35}")
     z_abs = df_2023["z_entry"].abs()
@@ -362,7 +363,7 @@ def analyze_dimension_6(df_2023, df_rest):
 
 def analyze_dimension_7(df_2023, df_rest):
     """7. Side (Long vs Short)."""
-    print(f"\n  --- DIM 7: Side (Long vs Short) ---")
+    print("\n  --- DIM 7: Side (Long vs Short) ---")
     print(f"  {'':>15} {'------ 2023 ------':^28}  {'--- Profitable yrs ---':^28}")
     print(f"  {'Side':>15} {'Trd':>5} {'PnL':>9} {'WR%':>6}    {'Trd':>5} {'PnL':>9} {'WR%':>6}")
     print(f"  {'-' * 75}")
@@ -380,7 +381,7 @@ def analyze_dimension_7(df_2023, df_rest):
 
 def analyze_dimension_8(df_2023, df_rest):
     """8. Duree et type de sortie."""
-    print(f"\n  --- DIM 8: Duree et type de sortie ---")
+    print("\n  --- DIM 8: Duree et type de sortie ---")
 
     for label, df in [("2023", df_2023), ("Profitable yrs", df_rest)]:
         if len(df) == 0:
@@ -395,7 +396,7 @@ def analyze_dimension_8(df_2023, df_rest):
                   f" median={losers['duration_min'].median():.0f}min")
 
     # Exit type breakdown
-    print(f"\n  Exit type (2023 vs profitable years):")
+    print("\n  Exit type (2023 vs profitable years):")
     print(f"  {'Type':>8}  {'--- 2023 ---':^20}  {'--- Prof yrs ---':^20}")
     print(f"  {'':>8}  {'Trd':>5} {'PnL':>9}    {'Trd':>5} {'PnL':>9}")
     print(f"  {'-' * 55}")
@@ -408,7 +409,7 @@ def analyze_dimension_8(df_2023, df_rest):
 
 def analyze_dimension_9(df_2023, aligned, idx):
     """9. Spread behavior / correlation NQ-YM en 2023."""
-    print(f"\n  --- DIM 9: Spread regime 2023 vs other years ---")
+    print("\n  --- DIM 9: Spread regime 2023 vs other years ---")
 
     close_a = aligned.df["close_a"]
     close_b = aligned.df["close_b"]
@@ -422,7 +423,7 @@ def analyze_dimension_9(df_2023, aligned, idx):
     ret_a = daily_a.loc[common].pct_change().dropna()
     ret_b = daily_b.loc[common].pct_change().dropna()
 
-    print(f"\n  Annual NQ-YM daily return correlation:")
+    print("\n  Annual NQ-YM daily return correlation:")
     print(f"  {'Year':>6} {'Corr':>8} {'NQ ret%':>9} {'YM ret%':>9} {'Spread drift':>13}")
     print(f"  {'-' * 50}")
 
@@ -445,7 +446,7 @@ def analyze_dimension_9(df_2023, aligned, idx):
         print(f"  {y:>6} {corr:>8.3f} {nq_ret:>+8.1f}% {ym_ret:>+8.1f}% {nq_ret - ym_ret:>+12.1f}%{flag}")
 
     # Hurst by year on 5min spread (using simple variance ratio)
-    print(f"\n  Annual spread characteristics (log spread):")
+    print("\n  Annual spread characteristics (log spread):")
     log_a = np.log(close_a)
     log_b = np.log(close_b)
 
@@ -470,7 +471,7 @@ def analyze_dimension_9(df_2023, aligned, idx):
 
 def analyze_dimension_10(df_2023_kalman, ols_bt, ols_zscore, ols_conf, idx):
     """10. Cross-check OLS — overlay complementarite en 2023."""
-    print(f"\n  --- DIM 10: Cross-check OLS Config E (overlay complementarite) ---")
+    print("\n  --- DIM 10: Cross-check OLS Config E (overlay complementarite) ---")
 
     if ols_bt["trades"] == 0:
         print("  OLS: 0 trades")
@@ -493,7 +494,7 @@ def analyze_dimension_10(df_2023_kalman, ols_bt, ols_zscore, ols_conf, idx):
     kalman_only = kalman_2023_dates - ols_2023_dates
     ols_only = ols_2023_dates - kalman_2023_dates
 
-    print(f"\n  2023 trade days:")
+    print("\n  2023 trade days:")
     print(f"    Kalman: {len(kalman_2023_dates)} days")
     print(f"    OLS:    {len(ols_2023_dates)} days")
     print(f"    Common: {len(common_dates)} days ({len(common_dates)/max(len(kalman_2023_dates),1)*100:.0f}%)")
@@ -511,7 +512,7 @@ def analyze_dimension_10(df_2023_kalman, ols_bt, ols_zscore, ols_conf, idx):
     ols_exclusive_mask = np.array([d.strftime("%Y-%m-%d") in ols_only for d in ols_dates[ols_2023_mask]])
     ols_exclusive_pnl = float(ols_2023_pnls[ols_exclusive_mask].sum()) if ols_exclusive_mask.any() else 0
 
-    print(f"\n  2023 PnL breakdown:")
+    print("\n  2023 PnL breakdown:")
     print(f"    {'':>20} {'Kalman':>10} {'OLS':>10}")
     print(f"    {'-' * 42}")
     print(f"    {'Common days':>20} ${k_common_pnl:>9,.0f} ${ols_common_pnl:>9,.0f}")
@@ -519,7 +520,7 @@ def analyze_dimension_10(df_2023_kalman, ols_bt, ols_zscore, ols_conf, idx):
     print(f"    {'Total 2023':>20} ${df_2023_kalman['pnl'].sum():>9,.0f} ${float(ols_2023_pnls.sum()):>9,.0f}")
 
     # Key question: when Kalman loses, does OLS win?
-    print(f"\n  Critical test: Kalman losing days in 2023 — what does OLS do?")
+    print("\n  Critical test: Kalman losing days in 2023 — what does OLS do?")
     k_losing_days = set(df_2023_kalman[~df_2023_kalman["win"]]["entry_date"].values)
 
     print(f"  {'Kalman loss date':>18} {'K PnL':>9} {'OLS trade?':>11} {'OLS PnL':>9} {'Overlay':>9}")
@@ -580,7 +581,7 @@ def main():
     print(f"Period: {idx[0].strftime('%Y-%m-%d')} to {idx[-1].strftime('%Y-%m-%d')}")
 
     # Run OLS Config E once (for dimension 10)
-    print(f"\nRunning OLS Config E...")
+    print("\nRunning OLS Config E...")
     ols_bt, ols_zscore, ols_conf, ols_sig, ols_hr = run_ols_pipeline(
         aligned, px_a, px_b, idx, minutes
     )

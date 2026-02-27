@@ -17,17 +17,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 _NQ, _RTY = get_pair_specs("NQ", "RTY")
 MULT_A, MULT_B = _NQ.multiplier, _RTY.multiplier
@@ -219,7 +221,7 @@ def main():
     # DISPLAY RESULTS
     # ================================================================
     print(f"\n{'='*140}")
-    print(f"  RESULTATS MAXDD — GRID RAFFINEE NQ/RTY (tries par PnL)")
+    print("  RESULTATS MAXDD — GRID RAFFINEE NQ/RTY (tries par PnL)")
     print(f"{'='*140}")
 
     # Sort by PnL

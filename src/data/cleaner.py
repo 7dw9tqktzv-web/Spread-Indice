@@ -3,7 +3,7 @@
 import pandas as pd
 
 from src.data.loader import BarData
-from src.utils.time_utils import SessionConfig, filter_session, filter_trading_window
+from src.utils.time_utils import SessionConfig, filter_session
 
 
 def clean(data: BarData, session: SessionConfig) -> BarData:

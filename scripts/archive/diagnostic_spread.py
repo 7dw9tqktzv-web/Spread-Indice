@@ -8,20 +8,18 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
-from src.stats.stationarity import adf_statistic_simple
-from src.stats.hurst import hurst_rolling
+from src.spread.pair import SpreadPair
 from src.stats.correlation import rolling_correlation
 from src.stats.halflife import half_life_rolling
-
+from src.stats.hurst import hurst_rolling
+from src.stats.stationarity import adf_statistic_simple
+from src.utils.constants import Instrument
 
 pairs_info = [
     ("NQ_YM", Instrument.NQ, Instrument.YM),

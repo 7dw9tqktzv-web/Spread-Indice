@@ -11,7 +11,6 @@ import sys
 import time as time_mod
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -89,7 +88,7 @@ def section_a(df):
 
     # Summary
     print(f"\n\n  {'='*80}")
-    print(f"  RESUME SECTION A — Sweet spots identifies")
+    print("  RESUME SECTION A — Sweet spots identifies")
     print(f"  {'='*80}")
     print(f"\n  {'Dimension':<14} {'Optimal':>14} {'PF moy':>7} {'Notes'}")
     print(f"  {'-'*70}")
@@ -165,7 +164,7 @@ def section_b(df):
 
     # Summary
     print(f"\n\n  {'='*80}")
-    print(f"  RESUME SECTION B — Meilleures combinaisons")
+    print("  RESUME SECTION B — Meilleures combinaisons")
     print(f"  {'='*80}")
     for title, (combo, pf) in best_combos.items():
         print(f"  {title:<25} -> {combo} (PF={pf:.2f})")
@@ -225,7 +224,7 @@ def section_c(df):
                 print(f"  ... et {len(sub)-15} de plus")
 
     # Cross-filter: configs qui passent 3+ filtres
-    print(f"\n\n  --- CONFIGS MULTI-FILTRES (passent >= 3 filtres) ---")
+    print("\n\n  --- CONFIGS MULTI-FILTRES (passent >= 3 filtres) ---")
     config_scores = {}
     for fname, sub in all_selected.items():
         for key in sub["key"].values:
@@ -248,11 +247,11 @@ def section_c(df):
                   f"{int(row.min_confidence):>3} {int(row.trades):>5} {row.win_rate:>5.1f} "
                   f"${int(row.pnl):>8} {row.profit_factor:>5.2f}")
     else:
-        print(f"  Aucune config ne passe 3+ filtres")
+        print("  Aucune config ne passe 3+ filtres")
 
     # Summary
     print(f"\n\n  {'='*80}")
-    print(f"  RESUME SECTION C — Volume par filtre")
+    print("  RESUME SECTION C — Volume par filtre")
     print(f"  {'='*80}")
     print(f"\n  {'Filtre':<12} {'Configs':>8} {'PF moy':>7} {'PnL moy':>10} {'Trades moy':>10}")
     print(f"  {'-'*55}")
@@ -334,7 +333,7 @@ def section_d(df, all_selected, multi_keys):
     print(f"  Selection finale: {len(selected)} configs diversifiees")
 
     # Diversity check
-    print(f"\n  Diversite:")
+    print("\n  Diversite:")
     for col in div_cols:
         vals = selected[col].unique()
         print(f"    {col}: {len(vals)} valeurs uniques")
@@ -353,7 +352,7 @@ def section_d(df, all_selected, multi_keys):
               f"${r.avg_pnl_trade:>4.0f} {r.score:>5.3f}")
 
     # Pattern analysis
-    print(f"\n  --- Patterns dominants ---")
+    print("\n  --- Patterns dominants ---")
     for col in ["ols_window", "zscore_window", "profil", "window"]:
         vc = selected[col].value_counts()
         top = vc.head(3)

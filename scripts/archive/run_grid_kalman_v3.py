@@ -30,18 +30,19 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backtest.engine import run_backtest_grid, run_backtest_vectorized
+from src.backtest.engine import run_backtest_grid
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.utils.time_utils import parse_session_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -406,7 +407,7 @@ def generate_reports(df: pd.DataFrame):
 
     # ── Top 10 per window ──
     log.info(f"\n{'='*130}")
-    log.info(f" TOP 10 PNL PER ENTRY WINDOW")
+    log.info(" TOP 10 PNL PER ENTRY WINDOW")
     log.info(f"{'='*130}")
 
     for wlabel, _, _, _, _ in ENTRY_WINDOWS:
@@ -420,21 +421,21 @@ def generate_reports(df: pd.DataFrame):
 
     # ── Top 10 PF overall ──
     log.info(f"\n{'='*130}")
-    log.info(f" TOP 10 PROFIT FACTOR (all windows)")
+    log.info(" TOP 10 PROFIT FACTOR (all windows)")
     log.info(f"{'='*130}")
     top_pf = base[base["trades"] >= 30].nlargest(10, "profit_factor")
     _print_table(top_pf)
 
     # ── Top 10 PnL overall ──
     log.info(f"\n{'='*130}")
-    log.info(f" TOP 10 PNL (all windows)")
+    log.info(" TOP 10 PNL (all windows)")
     log.info(f"{'='*130}")
     top_pnl = base[base["trades"] >= 30].nlargest(10, "pnl")
     _print_table(top_pnl)
 
     # ── Best per alpha ──
     log.info(f"\n{'='*130}")
-    log.info(f" BEST PER ALPHA (by PF, trades>=30)")
+    log.info(" BEST PER ALPHA (by PF, trades>=30)")
     log.info(f"{'='*130}")
     for alpha in ALPHA_RATIOS:
         sub = base[(base["alpha_ratio"] == alpha) & (base["trades"] >= 30)]
@@ -453,7 +454,7 @@ def generate_reports(df: pd.DataFrame):
 
     # ── Best per window ──
     log.info(f"\n{'='*130}")
-    log.info(f" BEST PER WINDOW (by PF, trades>=30)")
+    log.info(" BEST PER WINDOW (by PF, trades>=30)")
     log.info(f"{'='*130}")
     for wlabel, _, _, _, _ in ENTRY_WINDOWS:
         sub = base[(base["window"] == wlabel) & (base["trades"] >= 30)]
@@ -471,7 +472,7 @@ def generate_reports(df: pd.DataFrame):
 
     # ── Propfirm profiles ──
     log.info(f"\n{'='*130}")
-    log.info(f" PROPFIRM PROFILES")
+    log.info(" PROPFIRM PROFILES")
     log.info(f"{'='*130}")
 
     for pname, profile in PROPFIRM_PROFILES.items():

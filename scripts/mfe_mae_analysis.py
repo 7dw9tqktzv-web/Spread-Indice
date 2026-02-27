@@ -9,6 +9,7 @@ import time as time_mod
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,6 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_window_filter_numba
@@ -25,8 +27,6 @@ from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -306,7 +306,7 @@ def print_analysis(results):
 
     # How much profit left on table
     left_on_table = mfe - pnl
-    print(f"\n  Profit left on table (MFE - PnL final):")
+    print("\n  Profit left on table (MFE - PnL final):")
     print(f"    Median: ${np.median(left_on_table):,.0f}")
     print(f"    Mean:   ${np.mean(left_on_table):,.0f}")
     print(f"    >$200:  {(left_on_table > 200).sum()}/{n} trades ({(left_on_table > 200).sum()/n*100:.0f}%)")
@@ -319,20 +319,20 @@ def print_analysis(results):
     # MAE before recovery
     winners = valid[valid["pnl_5min"] > 0]
     losers = valid[valid["pnl_5min"] <= 0]
-    print(f"\n  MAE by outcome:")
+    print("\n  MAE by outcome:")
     print(f"    Winners ({len(winners)}): median MAE ${winners['mae'].median():+,.0f}, mean ${winners['mae'].mean():+,.0f}")
     print(f"    Losers  ({len(losers)}):  median MAE ${losers['mae'].median():+,.0f}, mean ${losers['mae'].mean():+,.0f}")
 
     # MFE timing (when does the peak happen?)
     mfe_times = valid["mfe_time_sec"].values / 60  # convert to minutes
-    print(f"\n  MFE timing (minutes after entry):")
+    print("\n  MFE timing (minutes after entry):")
     print(f"    Median: {np.median(mfe_times):.1f} min")
     print(f"    Mean:   {np.mean(mfe_times):.1f} min")
     print(f"    P25:    {np.percentile(mfe_times, 25):.1f} min")
     print(f"    P75:    {np.percentile(mfe_times, 75):.1f} min")
 
     # TP/SL dollar suggestions
-    print(f"\n  --- TP/SL Dollar Suggestions ---")
+    print("\n  --- TP/SL Dollar Suggestions ---")
     for tp in [150, 200, 250, 300, 400, 500]:
         hit = (mfe >= tp).sum()
         pct = hit / n * 100
@@ -348,7 +348,7 @@ def print_analysis(results):
         print(f"    SL ${sl:>6}: {hit:>3}/{n} trades hit ({pct:.0f}%)")
 
     # Direction breakdown
-    print(f"\n  --- By Direction ---")
+    print("\n  --- By Direction ---")
     for label, s in [("LONG", 1), ("SHORT", -1)]:
         mask = sides == s
         cnt = mask.sum()

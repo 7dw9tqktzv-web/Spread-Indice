@@ -22,9 +22,11 @@ from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
     apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
@@ -257,7 +259,7 @@ def main():
 
     # Global summary: best time stop per config
     print(f"\n\n  {'='*130}")
-    print(f"  RESUME: MEILLEUR TIME STOP PAR CONFIG (critere: PF ameliore OU MaxDD ameliore sans casser PF)")
+    print("  RESUME: MEILLEUR TIME STOP PAR CONFIG (critere: PF ameliore OU MaxDD ameliore sans casser PF)")
     print(f"  {'='*130}")
 
     print(f"\n  {'Label':<48} {'Tier':<7} {'Best TS':>7} {'PF_base':>7} {'PF_best':>7} "

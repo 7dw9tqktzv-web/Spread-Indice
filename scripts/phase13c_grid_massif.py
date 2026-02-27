@@ -22,21 +22,20 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
-from src.hedge.factory import create_estimator
-from src.signals.generator import generate_signals_numba
-from src.signals.filters import apply_time_stop, apply_window_filter_numba
 from src.backtest.engine import run_backtest_grid
-from src.validation.gates import GateConfig, compute_gate_mask, apply_gate_filter_numba
-from src.validation.cpcv import CPCVConfig, run_cpcv
 
 # ======================================================================
 # Constants
 # ======================================================================
-
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
+from src.data.cache import load_aligned_pair_cache
+from src.hedge.factory import create_estimator
+from src.signals.filters import apply_time_stop, apply_window_filter_numba
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
+from src.validation.cpcv import CPCVConfig, run_cpcv
+from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -104,14 +103,14 @@ def print_grid_summary():
     print(f" delta_sl:        {DELTA_SL}  ({n_dsl})")
     print(f" time_stop:       {TIME_STOPS}  ({n_ts})")
     print(f" windows:         {[w[0] for w in WINDOWS]}  ({n_win})")
-    print(f" flat:            15:30 CT")
+    print(" flat:            15:30 CT")
     print()
     print(f" Gates (fixed):   ADF < {GATE_ADF_THRESH}, "
           f"Hurst < {GATE_HURST_THRESH}, Corr > {GATE_CORR_THRESH}")
     print(f" Gate windows:    ADF=IN GRID {ADF_WINDOWS}, "
           f"Hurst={GATE_HURST_WINDOW}, Corr={GATE_CORR_WINDOW}")
-    print(f" Delta sigma:     z_exit = max(z_entry - delta_tp, 0.0)")
-    print(f"                  z_stop = z_entry + delta_sl")
+    print(" Delta sigma:     z_exit = max(z_entry - delta_tp, 0.0)")
+    print("                  z_stop = z_entry + delta_sl")
     print(f" CPCV:            {CPCV_CFG.n_folds} folds, {CPCV_CFG.n_test_folds} test, "
           f"purge={CPCV_CFG.purge_bars} bars, 45 paths")
     print()
@@ -307,7 +306,7 @@ def main():
 
     # Display top 30
     print(f"\n{'='*150}")
-    print(f" TOP 30 BY CPCV MEDIAN SHARPE")
+    print(" TOP 30 BY CPCV MEDIAN SHARPE")
     print(f"{'='*150}")
     cols = ["ols", "adf_w", "zw", "window", "z_entry", "delta_tp", "delta_sl",
             "z_exit", "z_stop", "time_stop",

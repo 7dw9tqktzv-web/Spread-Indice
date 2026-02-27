@@ -9,16 +9,16 @@ from numba import njit
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
-from src.hedge.factory import create_estimator
-from src.stats.stationarity import adf_statistic_simple
-from src.stats.hurst import hurst_rolling
-from src.stats.correlation import rolling_correlation
-from src.signals.generator import generate_signals_numba
-from src.signals.filters import apply_window_filter_numba
 from src.backtest.engine import run_backtest_vectorized
+from src.data.cache import load_aligned_pair_cache
+from src.hedge.factory import create_estimator
+from src.signals.filters import apply_window_filter_numba
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.stats.correlation import rolling_correlation
+from src.stats.hurst import hurst_rolling
+from src.stats.stationarity import adf_statistic_simple
+from src.utils.constants import Instrument
 
 pair = SpreadPair(leg_a=Instrument.NQ, leg_b=Instrument.YM)
 aligned = load_aligned_pair_cache(pair, "5min")

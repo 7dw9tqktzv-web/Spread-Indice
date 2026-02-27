@@ -30,7 +30,6 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.utils.time_utils import SessionConfig
 
-
 # =============================================================================
 # Configuration: Config E (primary) -- NQ_YM 5min
 # =============================================================================
@@ -68,7 +67,7 @@ def load_sierra_export(path: Path) -> pd.DataFrame:
     print(f"  File: {path}")
 
     # Read raw lines to determine structure
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
     print(f"  Total lines: {len(lines)} (2 header + {len(lines)-2} data)")
@@ -129,7 +128,7 @@ def load_sierra_export(path: Path) -> pd.DataFrame:
         elif "Spread StdDev" in h_strip:
             col_map["spread_stddev"] = i
 
-    print(f"\n  Mapped columns:")
+    print("\n  Mapped columns:")
     for name, idx in sorted(col_map.items(), key=lambda x: x[1]):
         print(f"    col[{idx:2d}] -> {name:<20s} (header: '{headers[idx].strip()[:50]}')")
 
@@ -435,7 +434,7 @@ def print_comparison_report(result: dict) -> None:
     print(f"  % bars rel err < 1%:  {pr1:.1f}%")
     print(f"  % bars rel err < 5%:  {pr5:.1f}%")
 
-    print(f"  Sample bars:")
+    print("  Sample bars:")
     print(f"  {'DateTime':>22s}  {'Sierra':>16s}  {'Python':>16s}  {'Diff':>14s}")
     for s in result["samples"]:
         print(f"  {s['datetime']:>22s}  {s['sierra']:>16.10f}  {s['python']:>16.10f}  {s['diff']:>14.8e}")
@@ -534,7 +533,7 @@ def print_summary(results: list[dict]) -> None:
         print("      Review the detailed reports above for root cause analysis.")
 
     # Additional diagnostic: timestamp coverage
-    print(f"\n  Diagnostic notes:")
+    print("\n  Diagnostic notes:")
     if results:
         n_vals = [r["n_matched"] for r in results]
         print(f"  - Matched bar counts range: {min(n_vals):,} to {max(n_vals):,}")
@@ -614,7 +613,7 @@ def print_diagnostics(merged: pd.DataFrame, sierra: pd.DataFrame, python: dict):
         print(f"    Ratio SC/Py: mean={ratio.mean():.6f}, std={ratio.std():.6f}")
 
     # 2. Data coverage: how much history does Sierra have?
-    print(f"\n  [B] Data history context:")
+    print("\n  [B] Data history context:")
     sierra_start = sierra.index[0]
     sierra_end = sierra.index[-1]
     py_start = aligned.df.index[0]
@@ -625,15 +624,15 @@ def print_diagnostics(merged: pd.DataFrame, sierra: pd.DataFrame, python: dict):
     print(f"    Python bars BEFORE Sierra start: {bars_before_sierra:,}")
     print(f"    OLS lookback: {OLS_WINDOW} bars")
     print(f"    Sierra bars beyond OLS warmup: ~{10000 - OLS_WINDOW} usable (approx)")
-    print(f"    NOTE: Sierra chart may have loaded data starting from a different date")
+    print("    NOTE: Sierra chart may have loaded data starting from a different date")
     print(f"    than Python. The rolling OLS lookback window of {OLS_WINDOW} bars means")
     print(f"    the first ~{OLS_WINDOW} bars after chart data start produce the OLS warmup.")
-    print(f"    If Sierra's chart has more/different history, betas will drift.")
+    print("    If Sierra's chart has more/different history, betas will drift.")
 
     # 3. Check YM close price availability in Sierra export
     # Sierra export only has NQ OHLCV, not YM. The C++ indicator sees both instruments
     # internally. We can check if the NQ closes match between Sierra and Python.
-    print(f"\n  [C] NQ close price cross-check:")
+    print("\n  [C] NQ close price cross-check:")
     if "nq_close" in sierra.columns:
         sc_nq = sierra["nq_close"].reindex(merged.index)
         py_nq = aligned.df["close_a"].reindex(merged.index)
@@ -650,13 +649,13 @@ def print_diagnostics(merged: pd.DataFrame, sierra: pd.DataFrame, python: dict):
                 worst_idx = nq_diff.idxmax()
                 print(f"    Worst at {worst_idx}: SC={sc_nq.loc[worst_idx]:.2f}, Py={py_nq.loc[worst_idx]:.2f}")
             # Check first/last few
-            print(f"    First 3 NQ prices (SC vs Py):")
+            print("    First 3 NQ prices (SC vs Py):")
             for ts in merged.index[:3]:
                 if ts in sc_nq.index and ts in py_nq.index:
                     print(f"      {ts}: SC={sc_nq.loc[ts]:.2f}, Py={py_nq.loc[ts]:.2f}")
 
     # 4. ADF diagnostic: is it a window/implementation difference?
-    print(f"\n  [D] ADF Statistic divergence analysis:")
+    print("\n  [D] ADF Statistic divergence analysis:")
     sc_adf = merged["sc_adf_stat"]
     py_adf = merged["py_adf_stat"]
     valid_adf = sc_adf.notna() & py_adf.notna() & (sc_adf != 0) & (py_adf != 0)
@@ -668,26 +667,26 @@ def print_diagnostics(merged: pd.DataFrame, sierra: pd.DataFrame, python: dict):
         print(f"    SC ADF range: [{sc_adf[valid_adf].min():.2f}, {sc_adf[valid_adf].max():.2f}]")
         print(f"    Py ADF range: [{py_adf[valid_adf].min():.2f}, {py_adf[valid_adf].max():.2f}]")
         # Check if ADF uses the spread directly (which differs due to OLS beta drift)
-        print(f"    NOTE: ADF is computed on the SPREAD, which depends on OLS beta/alpha.")
-        print(f"    Since beta drifts, the spread differs, so ADF diverges downstream.")
+        print("    NOTE: ADF is computed on the SPREAD, which depends on OLS beta/alpha.")
+        print("    Since beta drifts, the spread differs, so ADF diverges downstream.")
 
     # 5. Correlation metric: very good, confirm it uses log-prices directly
-    print(f"\n  [E] Correlation metric (best performer) -- confirms data alignment:")
-    print(f"    Pearson r = 0.9965 means the log-prices themselves match very well.")
-    print(f"    Correlation only depends on close_a/close_b log-prices, NOT on OLS output.")
-    print(f"    This confirms the raw data alignment is correct.")
+    print("\n  [E] Correlation metric (best performer) -- confirms data alignment:")
+    print("    Pearson r = 0.9965 means the log-prices themselves match very well.")
+    print("    Correlation only depends on close_a/close_b log-prices, NOT on OLS output.")
+    print("    This confirms the raw data alignment is correct.")
 
     # 6. Check if metrics that depend ONLY on spread show cascading error
-    print(f"\n  [F] Error cascade analysis:")
-    print(f"    Independent of OLS: Correlation (r=0.9965) -- GOOD")
-    print(f"    Depend on OLS spread: ADF (r=0.53), Hurst (r=0.96), Half-Life (r=0.48)")
-    print(f"    Spread itself: r=0.9958 -- small abs diff but relative error propagates")
-    print(f"    Confidence: r=0.79 -- aggregates ADF+Hurst+Corr+HL, inherits all errors")
-    print(f"    CONCLUSION: The root cause is OLS beta/alpha drift. Everything downstream")
-    print(f"    that depends on the spread inherits this error, amplified by rolling stats.")
+    print("\n  [F] Error cascade analysis:")
+    print("    Independent of OLS: Correlation (r=0.9965) -- GOOD")
+    print("    Depend on OLS spread: ADF (r=0.53), Hurst (r=0.96), Half-Life (r=0.48)")
+    print("    Spread itself: r=0.9958 -- small abs diff but relative error propagates")
+    print("    Confidence: r=0.79 -- aggregates ADF+Hurst+Corr+HL, inherits all errors")
+    print("    CONCLUSION: The root cause is OLS beta/alpha drift. Everything downstream")
+    print("    that depends on the spread inherits this error, amplified by rolling stats.")
 
     # 7. Temporal evolution of beta difference
-    print(f"\n  [G] Temporal evolution of OLS Beta difference:")
+    print("\n  [G] Temporal evolution of OLS Beta difference:")
     if valid.sum() > 100:
         d_beta = (sc_beta - py_beta)[valid]
         n_chunks = 5

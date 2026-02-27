@@ -19,9 +19,9 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-from src.stats.stationarity import adf_statistic_simple
-from src.stats.hurst import hurst_rolling
 from src.stats.correlation import rolling_correlation
+from src.stats.hurst import hurst_rolling
+from src.stats.stationarity import adf_statistic_simple
 
 
 @dataclass(frozen=True)

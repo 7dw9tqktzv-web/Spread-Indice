@@ -14,7 +14,6 @@ Usage:
 
 import sys
 import time as time_mod
-from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -24,17 +23,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_grid
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 # ======================================================================
 # Constants NQ/RTY
@@ -492,7 +493,7 @@ def main():
         print(f"  {wname:<20} {cnt:>5} ({pct:>4.1f}%)")
 
     # Configs qui changent significativement
-    print(f"\n  Configs ou un autre combo bat W01 de >10% PF:")
+    print("\n  Configs ou un autre combo bat W01 de >10% PF:")
     print(f"  {'Config':<35} {'W01 PF':>7} {'Best combo':<20} {'Best PF':>7} {'Delta':>7}")
     print(f"  {'-'*85}")
     improve_count = 0
@@ -508,7 +509,7 @@ def main():
             improve_count += 1
 
     if improve_count == 0:
-        print(f"  (aucune — W01 est optimal ou quasi-optimal partout)")
+        print("  (aucune — W01 est optimal ou quasi-optimal partout)")
     else:
         print(f"\n  {improve_count}/{len(all_configs)} configs ({improve_count/len(all_configs)*100:.0f}%) beneficient d'un changement de poids >10%")
 
@@ -531,13 +532,13 @@ def main():
     print(f"\n  CV moyen (coefficient variation PF): {stability['cv'].mean():.1f}%")
     print(f"  Range PF moyen (max-min): {stability['range_pf'].mean():.2f}")
 
-    print(f"\n  Configs les PLUS sensibles aux poids (top 10 CV):")
+    print("\n  Configs les PLUS sensibles aux poids (top 10 CV):")
     print(f"  {'Config':<35} {'PF moy':>7} {'PF min':>7} {'PF max':>7} {'CV%':>6}")
     print(f"  {'-'*65}")
     for cid, r in stability.nlargest(10, "cv").iterrows():
         print(f"  {cid:<35} {r.mean_pf:>7.2f} {r.min_pf:>7.2f} {r.max_pf:>7.2f} {r.cv:>5.1f}%")
 
-    print(f"\n  Configs les MOINS sensibles (top 10 plus stables):")
+    print("\n  Configs les MOINS sensibles (top 10 plus stables):")
     print(f"  {'Config':<35} {'PF moy':>7} {'PF min':>7} {'PF max':>7} {'CV%':>6}")
     print(f"  {'-'*65}")
     for cid, r in stability.nsmallest(10, "cv").iterrows():
@@ -558,12 +559,12 @@ def main():
     print(f"  Meilleur combo:  {best_overall} PF moy={best_row_v.avg_pf:.2f}, PnL moy=${best_row_v.avg_pnl:,.0f}")
 
     if best_overall == "W01_ref":
-        print(f"\n  >>> W01 (50/30/20/0) CONFIRME comme optimal <<<")
+        print("\n  >>> W01 (50/30/20/0) CONFIRME comme optimal <<<")
     else:
         delta = (best_row_v.avg_pf - ref_row.avg_pf) / ref_row.avg_pf * 100
         print(f"\n  >>> {best_overall} bat W01 de {delta:+.1f}% PF en moyenne <<<")
         if abs(delta) < 5:
-            print(f"  >>> Difference marginale (<5%) — W01 reste acceptable <<<")
+            print("  >>> Difference marginale (<5%) — W01 reste acceptable <<<")
         else:
             print(f"  >>> Difference significative — considerer re-run du grid avec {best_overall} <<<")
 

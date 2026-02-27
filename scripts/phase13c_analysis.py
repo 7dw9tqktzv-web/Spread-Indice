@@ -18,6 +18,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+
+# ======================================================================
+# Constants
+# ======================================================================
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_time_stop, apply_window_filter_numba
@@ -26,18 +31,12 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.deflated_sharpe import compute_dsr_for_config
-from src.validation.gates import GateConfig, compute_gate_mask, apply_gate_filter_numba
+from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
 from src.validation.neighborhood import (
-    get_neighbor_configs,
     compute_neighborhood_robustness,
+    get_neighbor_configs,
 )
 from src.validation.propfirm import PropfirmConfig, compute_propfirm_metrics
-
-# ======================================================================
-# Constants
-# ======================================================================
-
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier

@@ -18,18 +18,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+from src.data.alignment import AlignedPair
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
     apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.data.alignment import AlignedPair
 
 # ======================================================================
 # Constants
@@ -326,7 +328,7 @@ def main():
         print(f"{'='*130}")
 
         # --- Full sample ---
-        print(f"\n  [1/4] Full sample backtest...")
+        print("\n  [1/4] Full sample backtest...")
         sig_full, beta_full, _, _ = build_signal_on_subset(aligned, cfg, ts)
         bt_full = run_bt(px_a, px_b, sig_full, beta_full)
         yearly = compute_yearly(bt_full["equity"], dates)
@@ -339,7 +341,7 @@ def main():
             print(f"          {y}: ${yearly[y]:>+9,.0f}{flag}")
 
         # --- IS/OOS ---
-        print(f"\n  [2/4] IS/OOS 60/40...")
+        print("\n  [2/4] IS/OOS 60/40...")
         bt_is, bt_oos, isoos_v = validate_isoos(aligned, cfg, ts)
         degrad = ((bt_oos["pf"] - bt_is["pf"]) / bt_is["pf"] * 100
                   if bt_is["pf"] > 0 else 0)
@@ -350,7 +352,7 @@ def main():
         print(f"        Degradation: {degrad:+.1f}%  ->  IS/OOS = {isoos_v}")
 
         # --- Permutation ---
-        print(f"\n  [3/4] Permutation test (1000x)...")
+        print("\n  [3/4] Permutation test (1000x)...")
         t_perm = time_mod.time()
         ref_pf, p_val, perm_v = validate_permutation(aligned, cfg, ts)
         perm_time = time_mod.time() - t_perm
@@ -408,7 +410,7 @@ def main():
     df_all = pd.DataFrame(all_results)
 
     print(f"\n\n{'='*130}")
-    print(f"  TABLEAU RECAPITULATIF -- VALIDATION 10 CONFIGS NQ/RTY")
+    print("  TABLEAU RECAPITULATIF -- VALIDATION 10 CONFIGS NQ/RTY")
     print(f"{'='*130}")
 
     print(f"\n  {'#':>2} {'Label':<42} {'Tier':<6} {'TS':>4} "
@@ -433,7 +435,7 @@ def main():
     print(f"\n  TOTAL GO: {go_count}/10")
 
     # Tier breakdown
-    print(f"\n  --- Par tier ---")
+    print("\n  --- Par tier ---")
     for tier in ["SAFE", "WARN", "DANGER"]:
         tier_df = df_all[df_all["tier"] == tier]
         if len(tier_df) == 0:
@@ -442,7 +444,7 @@ def main():
         print(f"  {tier:>7}: {go_t}/{len(tier_df)} GO")
 
     # OOS focus
-    print(f"\n  --- Focus OOS ---")
+    print("\n  --- Focus OOS ---")
     print(f"  {'#':>2} {'Label':<42} {'OOS Trd':>7} {'OOS PF':>6} {'OOS PnL':>9} {'OOS DD':>8}")
     print(f"  {'-'*85}")
     for _, r in df_all.iterrows():

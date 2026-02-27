@@ -17,9 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -30,11 +31,11 @@ from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import apply_window_filter_numba
+from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.validation.cpcv import run_cpcv, CPCVConfig
+from src.validation.cpcv import CPCVConfig, run_cpcv
 
 OUTPUT_DIR = PROJECT_ROOT / "output" / "NQ_RTY"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -187,9 +188,9 @@ def print_summary(cfg: ConfigDef, bt: dict):
           f"ze={cfg.z_entry} zx={cfg.z_exit} zs=OFF ts={cfg.time_stop}")
     print(f"  Gates: ADF < {cfg.adf_threshold} (w={cfg.adf_window}), "
           f"Corr > {cfg.corr_threshold} (w={cfg.corr_window})")
-    print(f"  Window: 02:00-15:00 CT, Flat 15:30")
+    print("  Window: 02:00-15:00 CT, Flat 15:30")
     print(f"  Commission: ${COMMISSION}/side (Phidias)")
-    print(f"  ---")
+    print("  ---")
     print(f"  Trades: {bt['trades']}")
     print(f"  Win Rate: {bt['win_rate']:.1f}%")
     print(f"  PnL: ${bt['pnl']:,.0f}")
@@ -207,7 +208,7 @@ def print_summary(cfg: ConfigDef, bt: dict):
 
 
 def run_cpcv_analysis(cfg: ConfigDef, bt: dict, n_bars: int):
-    print(f"\n  --- CPCV(10,2) ---")
+    print("\n  --- CPCV(10,2) ---")
     entries = bt["trade_entry_bars"]
     exits = bt["trade_exit_bars"]
     pnls = bt["trade_pnls"]
@@ -226,7 +227,7 @@ def run_cpcv_analysis(cfg: ConfigDef, bt: dict, n_bars: int):
 
 
 def run_walkforward(cfg: ConfigDef, bt: dict, n_bars: int):
-    print(f"\n  --- Walk-Forward (2y IS / 6m OOS / 6m step) ---")
+    print("\n  --- Walk-Forward (2y IS / 6m OOS / 6m step) ---")
     entries = bt["trade_entry_bars"]
     exits = bt["trade_exit_bars"]
     pnls = bt["trade_pnls"]
@@ -297,7 +298,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
     losers = trades_df[trades_df["is_loser"]].copy()
     winners = trades_df[trades_df["is_winner"]].copy()
 
-    print(f"\n  --- TRADE ANALYSIS ---")
+    print("\n  --- TRADE ANALYSIS ---")
     print(f"  Winners: {len(winners)} ({len(winners)/len(trades_df)*100:.1f}%), "
           f"avg ${winners['pnl'].mean():,.0f}, median ${winners['pnl'].median():,.0f}")
     print(f"  Losers:  {len(losers)} ({len(losers)/len(trades_df)*100:.1f}%), "
@@ -308,7 +309,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
     print(f"  Losers avg duration:  {losers['duration_min'].mean():.0f} min")
 
     # --- Losers distribution ---
-    print(f"\n  --- LOSING TRADES DISTRIBUTION ---")
+    print("\n  --- LOSING TRADES DISTRIBUTION ---")
     bins = [(-np.inf, -1000), (-1000, -500), (-500, -250), (-250, -100), (-100, 0)]
     for lo, hi in bins:
         count = ((losers['pnl'] > lo) & (losers['pnl'] <= hi)).sum()
@@ -321,7 +322,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
         print(f"    {label:>20} : {count:>3} trades ({pct:>5.1f}%), total ${pnl_sum:,.0f}")
 
     # Worst 5 losers
-    print(f"\n  --- WORST 5 LOSERS ---")
+    print("\n  --- WORST 5 LOSERS ---")
     worst = losers.nsmallest(5, 'pnl')
     for _, t in worst.iterrows():
         side_str = "LONG" if t['side'] == 1 else "SHORT"
@@ -330,7 +331,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
               f"${t['pnl']:,.0f} | {t['duration_min']:.0f}min")
 
     # --- PnL by hour ---
-    print(f"\n  --- PNL PAR HEURE (entry hour CT) ---")
+    print("\n  --- PNL PAR HEURE (entry hour CT) ---")
     hourly = trades_df.groupby("entry_hour").agg(
         trades=("pnl", "count"),
         pnl_sum=("pnl", "sum"),
@@ -359,7 +360,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
         print(f"  Worst hour: {worst_h}h CT (${hourly.loc[worst_h, 'pnl_sum']:,.0f})")
 
     # --- PnL by year ---
-    print(f"\n  --- PNL PAR ANNEE ---")
+    print("\n  --- PNL PAR ANNEE ---")
     yearly = trades_df.groupby("year").agg(
         trades=("pnl", "count"),
         pnl_sum=("pnl", "sum"),
@@ -370,7 +371,7 @@ def analyze_trades(cfg: ConfigDef, bt: dict, idx: pd.DatetimeIndex):
               f"WR {row['wr']*100:.1f}%")
 
     # --- Long vs Short ---
-    print(f"\n  --- LONG vs SHORT ---")
+    print("\n  --- LONG vs SHORT ---")
     for side, label in [(1, "LONG"), (-1, "SHORT")]:
         sub = trades_df[trades_df['side'] == side]
         if len(sub) == 0:
@@ -580,7 +581,7 @@ def main():
         dd = eq - peak
         max_dd = dd.min()
 
-        print(f"\n  --- PROPFIRM COMPLIANCE ---")
+        print("\n  --- PROPFIRM COMPLIANCE ---")
         print(f"  Max Drawdown: ${max_dd:,.0f}")
         dd_ok = abs(max_dd) < 5000
         print(f"  DD < $5,000 : {'PASS' if dd_ok else 'FAIL'}")

@@ -23,18 +23,20 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_time_stop, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_time_stop,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
-from src.backtest.performance import PerformanceMetrics
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ======================================================================
 # Constants
@@ -412,11 +414,11 @@ def main():
           f"z=({cfg['z_entry']:.2f}/{cfg['z_exit']:.2f}/{cfg['z_stop']:.2f}) "
           f"conf={cfg['conf']:.0f} ts={ts_label} window={cfg['window']}")
 
-    print(f"\n  --- Performance globale ---")
+    print("\n  --- Performance globale ---")
     print_detailed_result(best_r)
 
     # Hourly analysis
-    print(f"\n  --- Analyse horaire (heure d'entree CT) ---")
+    print("\n  --- Analyse horaire (heure d'entree CT) ---")
     print(f"  {'Heure':>6} {'Trades':>6} {'PnL':>10} {'WR%':>6} {'Avg PnL':>8}")
     print(f"  {'-'*40}")
     hourly = best_r["hourly"]
@@ -426,7 +428,7 @@ def main():
         print(f"  {h:>5}h {hs['trades']:>6} ${hs['pnl']:>9,.0f} {hs['wr']:>5.1f}% ${hs['avg_pnl']:>7,.0f}{flag}")
 
     # Quarterly analysis
-    print(f"\n  --- Analyse trimestrielle ---")
+    print("\n  --- Analyse trimestrielle ---")
     print(f"  {'Trimestre':>10} {'Trades':>6} {'PnL':>10} {'WR%':>6}")
     print(f"  {'-'*36}")
     quarterly = best_r["quarterly"]
@@ -506,7 +508,7 @@ def main():
         good_hours = sorted(best_r["hourly"].items(), key=lambda x: x[1]["avg_pnl"], reverse=True)
         if bad_hours:
             print(f"     Heures perdantes (>= 3 trades): {bad_hours}")
-            print(f"     -> Bloquer les entrees a ces heures pourrait ameliorer le PF")
+            print("     -> Bloquer les entrees a ces heures pourrait ameliorer le PF")
         if good_hours:
             best_h = good_hours[0]
             print(f"     Meilleure heure: {best_h[0]}h ({best_h[1]['trades']} trades, "
@@ -527,7 +529,7 @@ def main():
         ratio = best_r["pnl_long"] / max(abs(best_r["pnl_short"]), 1)
         if ratio > 3:
             print(f"     DESEQUILIBRE: Long={best_r['pnl_long']:,.0f} vs Short={best_r['pnl_short']:,.0f}")
-            print(f"     -> Le profit vient surtout du cote long — risque de biais directionnel")
+            print("     -> Le profit vient surtout du cote long — risque de biais directionnel")
         elif ratio < 0.33:
             print(f"     DESEQUILIBRE: Short domine (Long={best_r['pnl_long']:,.0f}, Short={best_r['pnl_short']:,.0f})")
         else:
@@ -542,9 +544,9 @@ def main():
             q_total = len(q_pnls)
             print(f"     {q_positive}/{q_total} trimestres positifs ({q_positive/q_total*100:.0f}%)")
             if q_positive / q_total < 0.6:
-                print(f"     -> ATTENTION: moins de 60% de trimestres positifs — fragile")
+                print("     -> ATTENTION: moins de 60% de trimestres positifs — fragile")
             else:
-                print(f"     -> Bonne stabilite temporelle")
+                print("     -> Bonne stabilite temporelle")
 
     print("\n  5. SUGGESTIONS GRID SUIVANTE:")
     if len(df_good) > 0:

@@ -21,15 +21,15 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
+from src.hedge.factory import create_estimator
+from src.signals.filters import apply_time_stop, apply_window_filter_numba
+from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.hedge.factory import create_estimator
-from src.signals.generator import generate_signals_numba
-from src.signals.filters import apply_time_stop, apply_window_filter_numba
-from src.backtest.engine import run_backtest_vectorized
-from src.validation.gates import GateConfig, compute_gate_mask, apply_gate_filter_numba
 from src.validation.cpcv import CPCVConfig, run_cpcv
+from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
 
 # ======================================================================
 # Constants
@@ -96,7 +96,7 @@ def print_grid_summary():
     print(f" z_stop:          {Z_STOPS}  ({n_stop})")
     print(f" time_stop:       {TIME_STOPS}  ({n_ts})")
     print(f" windows:         {[w[0] for w in WINDOWS]}  ({n_win})")
-    print(f" flat:            15:30 CT")
+    print(" flat:            15:30 CT")
     print()
     print(f" Gates (fixed):   ADF < {GATE_CFG.adf_threshold}, "
           f"Hurst < {GATE_CFG.hurst_threshold}, Corr > {GATE_CFG.corr_threshold}")
@@ -283,7 +283,7 @@ def main():
 
     # Display top 20
     print(f"\n{'='*120}")
-    print(f" TOP 20 BY CPCV MEDIAN SHARPE")
+    print(" TOP 20 BY CPCV MEDIAN SHARPE")
     print(f"{'='*120}")
     cols = ["ols", "zw", "window", "z_entry", "z_exit", "z_stop", "time_stop",
             "trades", "pnl", "pf", "max_dd", "sharpe_full",

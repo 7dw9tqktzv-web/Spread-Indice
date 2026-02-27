@@ -13,7 +13,7 @@ Config robuste: OLS=2640, ZW=36, entry=3.0, exit=1.5, stop=4.0, profil tres_cour
 
 import argparse
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -23,16 +23,19 @@ from scipy import stats as sp_stats
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import SignalConfig, SignalGenerator
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence, _score_linear, _score_halflife,
+    ConfidenceConfig,
+    _score_halflife,
+    _score_linear,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import SignalConfig, SignalGenerator
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ══════════════════════════════════════════════════════════════════════
 # Config
@@ -439,16 +442,16 @@ def section_permutation(aligned, n_perms=1000):
     p_value_pf = (pf_perms >= pf_obs).mean()
     p_value_pnl = (pnl_perms >= pnl_obs).mean()
 
-    print(f"\n --- RESULTATS ---")
+    print("\n --- RESULTATS ---")
     print(f" PF observe: {pf_obs:.2f}")
     print(f" PF permutations: mean={pf_perms.mean():.2f}, std={pf_perms.std():.2f}, "
           f"median={np.median(pf_perms):.2f}, max={pf_perms.max():.2f}")
     print(f" p-value (PF): {p_value_pf:.4f} ({(pf_perms >= pf_obs).sum()}/{n_perms} permutations >= observe)")
-    print(f"")
+    print("")
     print(f" PnL observe: ${pnl_obs:,.0f}")
     print(f" PnL permutations: mean=${pnl_perms.mean():,.0f}, max=${pnl_perms.max():,.0f}")
     print(f" p-value (PnL): {p_value_pnl:.4f}")
-    print(f"")
+    print("")
     print(f" Trades observe: {trades_obs}")
     print(f" Trades permutations: mean={trades_perms.mean():.0f}, std={trades_perms.std():.0f}")
 
@@ -742,7 +745,7 @@ def section_propfirm(aligned, oos_pnls=None):
     trades_per_year_actual = n_trades / (years_data * 0.4)  # OOS is 40% of data
     trades_per_year_actual = max(trades_per_year_actual, 1)
 
-    print(f"\n Parametres propfirm:")
+    print("\n Parametres propfirm:")
     print(f"   Target annuel: ${target_pnl:,.0f} ($300/jour)")
     print(f"   Max drawdown: ${max_dd:,.0f}")
     print(f"   Trades/an estimes (OOS): {trades_per_year_actual:.0f}")

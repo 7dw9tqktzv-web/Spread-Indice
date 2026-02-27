@@ -1,15 +1,14 @@
 """Tests for CPCV module."""
 
 import numpy as np
-import pytest
 
 from src.validation.cpcv import (
     CPCVConfig,
-    generate_fold_boundaries,
-    generate_cpcv_paths,
     build_test_mask,
-    filter_trades_by_mask,
     compute_sharpe_from_pnls,
+    filter_trades_by_mask,
+    generate_cpcv_paths,
+    generate_fold_boundaries,
     run_cpcv,
 )
 

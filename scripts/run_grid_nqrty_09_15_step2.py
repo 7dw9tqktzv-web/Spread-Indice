@@ -16,9 +16,9 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -27,15 +27,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_grid
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
+from src.signals.filters import apply_time_stop, apply_window_filter_numba
 from src.signals.generator import generate_signals_numba
-from src.signals.filters import apply_window_filter_numba, apply_time_stop
 from src.spread.pair import SpreadPair
 from src.stats.halflife import half_life_rolling
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 logging.basicConfig(
     level=logging.INFO,

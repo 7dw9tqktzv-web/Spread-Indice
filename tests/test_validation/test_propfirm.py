@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.validation.propfirm import PropfirmConfig, PropfirmResult, compute_propfirm_metrics
+from src.validation.propfirm import PropfirmConfig, compute_propfirm_metrics
 
 
 def _default_config():

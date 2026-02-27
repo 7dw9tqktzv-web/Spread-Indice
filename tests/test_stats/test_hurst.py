@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.stats.hurst import hurst_exponent, hurst_rolling
 

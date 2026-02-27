@@ -32,8 +32,10 @@ from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
@@ -450,7 +452,7 @@ def main():
         log.info("=" * 80)
         log.info(" GRID KALMAN v2 -- NQ_RTY -- CORRECT CONFIDENCE WEIGHTS")
         log.info("=" * 80)
-        log.info(f"  Confidence: ADF 50%, Hurst 30%, Corr 20%, HL 0% (Phase 11)")
+        log.info("  Confidence: ADF 50%, Hurst 30%, Corr 20%, HL 0% (Phase 11)")
         log.info(f"  Jobs: {len(jobs)} ({len(ALPHA_RATIOS)} alpha x {len(METRIC_PROFILES)} profiles x {len(ENTRY_WINDOWS)} windows)")
         log.info(f"  Combos/job: {combos_per_job}, Total: {total:,}")
         log.info(f"  Workers: {args.workers}")
@@ -500,7 +502,7 @@ def main():
 
     # ── Filter ──
     log.info(f"\n{'='*80}")
-    log.info(f" GRID RESULTS ANALYSIS")
+    log.info(" GRID RESULTS ANALYSIS")
     log.info(f"{'='*80}")
     log.info(f"Total configs: {len(df):,}")
 
@@ -512,7 +514,7 @@ def main():
         return
 
     # Sweet spot analysis
-    log.info(f"\n--- Sweet Spots ---")
+    log.info("\n--- Sweet Spots ---")
     for dim in ["alpha_ratio", "profil", "window", "z_entry", "z_exit", "z_stop", "min_confidence"]:
         grp = profitable.groupby(dim).agg(
             count=("pnl", "count"),
@@ -563,14 +565,14 @@ def main():
         symmetric = go[(go["long_pct"] >= 35) & (go["long_pct"] <= 65)].copy()
 
         log.info(f"\n{'='*80}")
-        log.info(f" SUMMARY")
+        log.info(" SUMMARY")
         log.info(f"{'='*80}")
         log.info(f"Total candidates analyzed: {len(results_df)}")
         log.info(f"IS/OOS GO: {len(go)}")
         log.info(f"IS/OOS GO + L/S symmetric: {len(symmetric)}")
 
         if len(symmetric) > 0:
-            log.info(f"\n--- BEST SYMMETRIC + GO ---")
+            log.info("\n--- BEST SYMMETRIC + GO ---")
             for _, r in symmetric.sort_values("pf", ascending=False).iterrows():
                 log.info(
                     f"  {r['profil']:<10} {r['window']:<12} a={r['alpha']:.1e} "
@@ -581,7 +583,7 @@ def main():
                 )
                 log.info(f"    Yearly: {r['yearly']}")
         elif len(go) > 0:
-            log.info(f"\n--- BEST GO (no symmetric found) ---")
+            log.info("\n--- BEST GO (no symmetric found) ---")
             for _, r in go.sort_values("pf", ascending=False).head(5).iterrows():
                 log.info(
                     f"  {r['profil']:<10} {r['window']:<12} a={r['alpha']:.1e} "

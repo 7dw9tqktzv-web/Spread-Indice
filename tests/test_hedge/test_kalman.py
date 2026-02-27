@@ -6,7 +6,6 @@ import pytest
 from src.hedge.kalman import KalmanEstimator
 from tests.conftest import make_aligned_pair, make_aligned_pair_with_gap
 
-
 WARMUP = 100
 
 

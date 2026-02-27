@@ -23,7 +23,6 @@ from src.data.alignment import AlignedPair
 from src.hedge.factory import create_estimator
 from src.validation.gates import GateConfig, compute_gate_mask
 
-
 # =========================================================================
 # Config Vector -- fixed-signature pattern
 # =========================================================================

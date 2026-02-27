@@ -13,9 +13,9 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -24,13 +24,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_grid
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import apply_window_filter_numba
+from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -255,7 +255,7 @@ def print_duration_clusters(df: pd.DataFrame):
     df_copy = df.copy()
     df_copy["dur_cluster"] = cats.values
     grp = df_copy.groupby("dur_cluster", observed=True)["profit_factor"].median()
-    log.info(f"\n  Median PF per duration cluster:")
+    log.info("\n  Median PF per duration cluster:")
     for label, pf in grp.items():
         log.info(f"    {label:>10}  PF {pf:.2f}")
 

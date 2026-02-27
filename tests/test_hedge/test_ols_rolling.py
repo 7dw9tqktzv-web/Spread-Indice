@@ -1,11 +1,9 @@
 """Unit tests for OLS Rolling hedge ratio estimator."""
 
-import numpy as np
 import pytest
 
 from src.hedge.ols_rolling import OLSRollingEstimator
 from tests.conftest import make_aligned_pair
-
 
 WINDOW = 500  # smaller window for faster tests
 ZSCORE_WINDOW = 12

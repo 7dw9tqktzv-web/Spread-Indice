@@ -1,11 +1,9 @@
 """Tests for neighborhood robustness module."""
 
-import pytest
 
 from src.validation.neighborhood import (
-    get_neighbor_configs,
     compute_neighborhood_robustness,
-    NeighborhoodResult,
+    get_neighbor_configs,
 )
 
 

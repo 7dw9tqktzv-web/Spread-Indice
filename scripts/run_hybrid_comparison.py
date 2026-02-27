@@ -9,7 +9,6 @@ import time as time_mod
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -210,7 +209,7 @@ def compare_results(bt_5min, trades_5min, dd_5min, result_1s):
 
     # Exit reason distribution
     if len(df_1s) > 0:
-        print(f"\n  Exit Reasons (1s engine):")
+        print("\n  Exit Reasons (1s engine):")
         for reason, count in df_1s["exit_reason"].value_counts().items():
             pct = count / len(df_1s) * 100
             avg_pnl = df_1s[df_1s["exit_reason"] == reason]["pnl_net"].mean()
@@ -218,7 +217,7 @@ def compare_results(bt_5min, trades_5min, dd_5min, result_1s):
 
     # MFE/MAE stats
     if len(df_1s) > 0 and "mfe" in df_1s.columns:
-        print(f"\n  MFE/MAE (1s engine):")
+        print("\n  MFE/MAE (1s engine):")
         print(f"    MFE median: ${df_1s['mfe'].median():+,.0f}")
         print(f"    MAE median: ${df_1s['mae'].median():+,.0f}")
         print(f"    MFE mean:   ${df_1s['mfe'].mean():+,.0f}")
@@ -226,7 +225,7 @@ def compare_results(bt_5min, trades_5min, dd_5min, result_1s):
 
     # Trade-by-trade timing comparison
     if len(trades_5min) > 0 and len(df_1s) > 0:
-        print(f"\n  Timing Analysis:")
+        print("\n  Timing Analysis:")
         # Match trades by entry date (same day, same side)
         matched = 0
         earlier_entry = 0

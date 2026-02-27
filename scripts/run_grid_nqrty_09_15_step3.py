@@ -22,9 +22,9 @@ import argparse
 import logging
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -33,15 +33,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_grid
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
+from src.signals.filters import apply_time_stop, apply_window_filter_numba
 from src.signals.generator import generate_signals_numba
-from src.signals.filters import apply_window_filter_numba, apply_time_stop
 from src.spread.pair import SpreadPair
 from src.stats.halflife import half_life_rolling
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -296,7 +296,7 @@ def analyze_results(df: pd.DataFrame):
     log.info(f"{'='*80}")
 
     # --- Gate mode comparison ---
-    log.info(f"\n--- GATE MODE COMPARISON ---")
+    log.info("\n--- GATE MODE COMPARISON ---")
     log.info(f"  {'Gate':>12}  {'Configs':>8}  {'Med PF':>8}  {'%Profit':>8}  "
              f"{'Med Trades':>10}  {'Med PnL':>10}  {'Med $/t':>10}")
     log.info("  " + "-" * 80)
@@ -313,7 +313,7 @@ def analyze_results(df: pd.DataFrame):
                  f"${sub['avg_pnl_trade'].median():>9,.0f}")
 
     # --- ADF+Corr threshold combos ---
-    log.info(f"\n--- ADF+CORR THRESHOLD COMBOS ---")
+    log.info("\n--- ADF+CORR THRESHOLD COMBOS ---")
     combo = viable[viable["gate"] == "adf+corr"]
     if not combo.empty:
         log.info(f"  {'ADF<':>8}  {'Corr>':>8}  {'Configs':>8}  {'Med PF':>8}  "
@@ -333,7 +333,7 @@ def analyze_results(df: pd.DataFrame):
                          f"${sub['pnl'].median():>9,.0f}")
 
     # --- ADF seul threshold ---
-    log.info(f"\n--- ADF SEUL THRESHOLD ---")
+    log.info("\n--- ADF SEUL THRESHOLD ---")
     adf_only = viable[viable["gate"] == "adf"]
     if not adf_only.empty:
         for adf_t in ADF_THRESHOLDS:
@@ -347,7 +347,7 @@ def analyze_results(df: pd.DataFrame):
                      f"med trades={sub['trades'].median():.0f}")
 
     # --- Time stop ---
-    log.info(f"\n--- TIME STOP IMPACT ---")
+    log.info("\n--- TIME STOP IMPACT ---")
     for ts in TIME_STOPS:
         sub = viable[viable["time_stop_bars"] == ts]
         prof = sub[sub["profit_factor"] > 1.0]
@@ -380,7 +380,7 @@ def analyze_results(df: pd.DataFrame):
     top120 = viable[viable["trades"] >= 120].nlargest(20, "profit_factor")
     if not top120.empty:
         log.info(f"\n{'='*80}")
-        log.info(f"TOP 20 CONFIGS (trades >= 120)")
+        log.info("TOP 20 CONFIGS (trades >= 120)")
         log.info(f"{'='*80}")
         log.info(f"  {'OLS':>5} {'ZW':>3} {'ze':>5} {'dTP':>5} {'TS':>3} {'HLw':>3} "
                  f"{'Gate':>10} {'ADF<':>6} {'C>':>5} | "

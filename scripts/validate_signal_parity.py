@@ -25,7 +25,7 @@ from scipy import stats
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.alignment import AlignedPair, align_pair
+from src.data.alignment import align_pair
 from src.data.cleaner import clean
 from src.data.loader import load_sierra_csv
 from src.data.resampler import resample_to_5min
@@ -41,7 +41,6 @@ from src.signals.generator import SignalConfig, SignalGenerator
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.utils.time_utils import SessionConfig
-
 
 # =============================================================================
 # Configuration: Config E (primary) -- NQ_YM 5min
@@ -101,7 +100,7 @@ def load_sierra_export(path: Path) -> pd.DataFrame:
     print(f"{'='*80}")
     print(f"  File: {path}")
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
     print(f"  Total lines: {len(lines)} (2 header + {len(lines)-2} data)")
@@ -455,7 +454,7 @@ def level1_regime_agreement(merged: pd.DataFrame) -> dict:
         sc_only = (sc_mr & ~py_mr).sum()
         py_only = (~sc_mr & py_mr).sum()
 
-        print(f"\n  [1B] Mean-Reverting (Hurst < 0.50)")
+        print("\n  [1B] Mean-Reverting (Hurst < 0.50)")
         print(f"       Valid bars: {n_valid:,}")
         print(f"       Agreement:  {agree:.1f}%")
         print(f"       Both YES:   {both_yes:,} ({both_yes/n_valid*100:.1f}%)")
@@ -583,7 +582,7 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     py_raw = merged["py_raw_signal"].values.astype(np.int8)
     n = len(sc_sig)
 
-    print(f"\n  [2A] Raw signals (z-score state machine, no filters)")
+    print("\n  [2A] Raw signals (z-score state machine, no filters)")
     print(f"       Total bars: {n:,}")
 
     # State distribution
@@ -597,7 +596,7 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     print(f"       State agreement: {agree_raw:.1f}%")
 
     # Confusion matrix
-    print(f"\n       Confusion matrix (SC rows, PY columns):")
+    print("\n       Confusion matrix (SC rows, PY columns):")
     states = [0, 1, -1]
     labels = ["FLAT", "LONG", "SHORT"]
     print(f"       {'':>8s}  {'PY_FLAT':>8s}  {'PY_LONG':>8s}  {'PY_SHORT':>9s}")
@@ -629,7 +628,7 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     # --- 2C: Final signals (after window filter) ---
     py_final = merged["py_final_signal"].values.astype(np.int8)
 
-    print(f"\n  [2C] Final signals (after entry window + flat EOD)")
+    print("\n  [2C] Final signals (after entry window + flat EOD)")
     print(f"       Entry: {ENTRY_START.strftime('%H:%M')}-{ENTRY_END.strftime('%H:%M')} CT, "
           f"flat: {FLAT_TIME.strftime('%H:%M')} CT")
 
@@ -643,7 +642,7 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     print(f"       State agreement: {agree_final:.1f}%")
 
     # Confusion matrix for final
-    print(f"\n       Confusion matrix (SC rows, PY columns):")
+    print("\n       Confusion matrix (SC rows, PY columns):")
     print(f"       {'':>8s}  {'PY_FLAT':>8s}  {'PY_LONG':>8s}  {'PY_SHORT':>9s}")
     for i, (s, sl) in enumerate(zip(states, labels)):
         row = []
@@ -655,8 +654,8 @@ def level2_signal_agreement(merged: pd.DataFrame) -> dict:
     results["final"] = {"agreement": agree_final, "n": n}
 
     # --- 2D: Sensitivity analysis at different z_entry thresholds ---
-    print(f"\n  [2D] Sensitivity: Signal agreement at various z_entry thresholds")
-    print(f"       (using Python raw z-score state machine, no confidence filter)")
+    print("\n  [2D] Sensitivity: Signal agreement at various z_entry thresholds")
+    print("       (using Python raw z-score state machine, no confidence filter)")
 
     zscore = merged["py_zscore"].values
     sc_z = merged["sc_zscore_ols"].values
@@ -705,7 +704,7 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
     py_conf_trades = extract_trades(py_conf, idx)
     py_raw_trades = extract_trades(py_raw, idx)
 
-    print(f"\n  Trade counts:")
+    print("\n  Trade counts:")
     print(f"    Sierra C++:               {len(sc_trades):>4d} trades")
     print(f"    Python raw (z only):      {len(py_raw_trades):>4d} trades")
     print(f"    Python + confidence:      {len(py_conf_trades):>4d} trades")
@@ -754,8 +753,8 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
     print(f"\n  [3A] Sierra C++ vs Python final (tolerance: +/- {TOLERANCE} bars)")
 
     if len(sc_trades) == 0 and len(py_final_trades) == 0:
-        print(f"       Both have zero trades -- PERFECT AGREEMENT (vacuously true)")
-        print(f"       This means both pipelines agree that no entry conditions are met")
+        print("       Both have zero trades -- PERFECT AGREEMENT (vacuously true)")
+        print("       This means both pipelines agree that no entry conditions are met")
         print(f"       in this {len(merged):,}-bar window.")
         results["sc_vs_py_final"] = {
             "matched": 0, "sc_only": 0, "py_only": 0,
@@ -789,10 +788,10 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
         }
 
     # --- 3B: Sierra vs Python raw (without any filters) ---
-    print(f"\n  [3B] Sierra C++ vs Python raw (z-score only, no filters)")
+    print("\n  [3B] Sierra C++ vs Python raw (z-score only, no filters)")
 
     if len(sc_trades) == 0 and len(py_raw_trades) == 0:
-        print(f"       Both have zero trades")
+        print("       Both have zero trades")
     elif len(sc_trades) > 0 and len(py_raw_trades) > 0:
         matched, sc_only, py_only = match_trades(sc_trades, py_raw_trades)
         n_dir_agree = sum(1 for m in matched if m["a_dir"] == m["b_dir"])
@@ -807,7 +806,7 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
 
     # --- 3C: Show all Python raw trades and nearby Sierra z-score ---
     if py_raw_trades:
-        print(f"\n  [3C] Python raw trade details (first 20):")
+        print("\n  [3C] Python raw trade details (first 20):")
         print(f"       {'Bar':>6s}  {'DateTime':>22s}  {'Dir':>5s}  {'PY_z':>8s}  {'SC_z':>8s}  "
               f"{'PY_conf':>8s}  {'SC_conf':>8s}")
         for t_bar, t_dt, t_dir in py_raw_trades[:20]:
@@ -831,7 +830,7 @@ def level3_trade_agreement(merged: pd.DataFrame) -> dict:
 
     if len(near_bars) > 0:
         print(f"       Total bars with |z| > {Z_ENTRY}: {len(near_bars):,}")
-        print(f"\n       Sample near-entry bars (first 15):")
+        print("\n       Sample near-entry bars (first 15):")
         print(f"       {'DateTime':>22s}  {'SC_z':>8s}  {'PY_z':>8s}  {'SC_conf':>8s}  {'PY_conf':>8s}  "
               f"{'SC_coint':>8s}  {'PY_coint':>8s}")
         for dt in near_bars[:15]:
@@ -867,7 +866,7 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
     if valid.sum() > 10:
         r, p = stats.pearsonr(sc_z[valid], py_z[valid])
         diff = (sc_z - py_z)[valid]
-        print(f"\n  [D1] Z-Score divergence:")
+        print("\n  [D1] Z-Score divergence:")
         print(f"       Pearson r: {r:.6f}")
         print(f"       Mean diff (SC-PY): {diff.mean():.6f}")
         print(f"       Std diff: {diff.std():.6f}")
@@ -892,7 +891,7 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
     if valid_c.sum() > 10:
         r_c, _ = stats.pearsonr(sc_c[valid_c], py_c[valid_c])
         diff_c = (sc_c - py_c)[valid_c]
-        print(f"\n  [D2] Confidence divergence:")
+        print("\n  [D2] Confidence divergence:")
         print(f"       Pearson r: {r_c:.6f}")
         print(f"       Mean diff (SC-PY): {diff_c.mean():.2f}%")
         print(f"       Std diff: {diff_c.std():.2f}%")
@@ -913,7 +912,7 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
         if valid_b.sum() > 10:
             r_b, _ = stats.pearsonr(sc_beta[valid_b], py_beta[valid_b])
             diff_b = (sc_beta - py_beta)[valid_b]
-            print(f"\n  [D3] OLS Beta divergence (root cause):")
+            print("\n  [D3] OLS Beta divergence (root cause):")
             print(f"       Pearson r: {r_b:.6f}")
             print(f"       Mean diff: {diff_b.mean():.6f}")
             print(f"       Std diff: {diff_b.std():.6f}")
@@ -924,7 +923,7 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
     sc_nq = merged.get("sc_nq_close") if "nq_close" in merged.columns else None
     py_nq = merged.get("py_beta")  # Not NQ close, just placeholder
 
-    print(f"\n  [D4] Data context:")
+    print("\n  [D4] Data context:")
     print(f"       Merged window: {merged.index[0]} to {merged.index[-1]}")
     print(f"       Total bars compared: {len(merged):,}")
     n_days = (merged.index[-1] - merged.index[0]).days
@@ -946,7 +945,7 @@ def deep_diagnostics(merged: pd.DataFrame) -> None:
     z_extreme = sc_z_vals.abs() > Z_ENTRY
     if z_extreme.sum() > 0:
         extreme_conf = sc_c_vals[z_extreme]
-        print(f"\n  [D5] Entry condition analysis:")
+        print("\n  [D5] Entry condition analysis:")
         print(f"       Bars with SC |z| > {Z_ENTRY}: {z_extreme.sum():,}")
         print(f"       Their confidence range: [{extreme_conf.min():.1f}%, {extreme_conf.max():.1f}%]")
         print(f"       Mean confidence: {extreme_conf.mean():.1f}%")
@@ -971,7 +970,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
     print(f"{'='*80}")
 
     # Level 1 table
-    print(f"\n  Level 1 -- Regime Agreement:")
+    print("\n  Level 1 -- Regime Agreement:")
     print(f"  {'Test':<35s}  {'N bars':>8s}  {'Agreement':>10s}  {'Status':>12s}")
     print(f"  {'-'*35}  {'-'*8}  {'-'*10}  {'-'*12}")
 
@@ -996,7 +995,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
         print(f"  {label:<35s}  {n_valid:>8,}  {agree:>9.1f}%  {status:>12s}")
 
     # Level 2 table
-    print(f"\n  Level 2 -- Signal State Agreement:")
+    print("\n  Level 2 -- Signal State Agreement:")
     print(f"  {'Stage':<35s}  {'N bars':>8s}  {'Agreement':>10s}  {'Status':>12s}")
     print(f"  {'-'*35}  {'-'*8}  {'-'*10}  {'-'*12}")
 
@@ -1019,7 +1018,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
         print(f"  {label:<35s}  {n:>8,}  {agree:>9.1f}%  {status:>12s}")
 
     # Level 3 table
-    print(f"\n  Level 3 -- Trade-Level Agreement:")
+    print("\n  Level 3 -- Trade-Level Agreement:")
     sc_count = level3.get("sc_count", 0)
     py_final = level3.get("py_final_count", 0)
     py_raw = level3.get("py_raw_count", 0)
@@ -1034,7 +1033,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
     status_final = sc_vs_final.get("status", "UNKNOWN")
 
     if status_final == "BOTH_EMPTY":
-        print(f"  Status: BOTH_EMPTY -- Both pipelines agree no trades should fire")
+        print("  Status: BOTH_EMPTY -- Both pipelines agree no trades should fire")
         trade_verdict = "PASS"
     elif status_final == "ASYMMETRIC":
         sc_only = sc_vs_final.get("sc_only", 0)
@@ -1044,7 +1043,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
             trade_verdict = "PASS"
             print(f"  Status: ASYMMETRIC but marginal ({total_diff} extra trades)")
             print(f"  SC-only: {sc_only}, PY-only: {py_only}")
-            print(f"  Small trade count difference is expected from OLS beta drift")
+            print("  Small trade count difference is expected from OLS beta drift")
         else:
             trade_verdict = "WARN"
             print(f"  Status: ASYMMETRIC ({total_diff} extra trades)")
@@ -1097,7 +1096,7 @@ def print_summary(level1: dict, level2: dict, level3: dict) -> None:
         print("  OVERALL VERDICT: WARN -- Some divergences exist, review details above")
 
     # Interpretation
-    print(f"\n  Interpretation:")
+    print("\n  Interpretation:")
     if sc_count == 0 and py_final == 0:
         print("  Both pipelines agree that no trades should be taken in this data window.")
         print(f"  This is because |z| > {Z_ENTRY} and confidence >= {MIN_CONFIDENCE}% never")

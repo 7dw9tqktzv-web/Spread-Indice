@@ -17,17 +17,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 _NQ, _RTY = get_pair_specs("NQ", "RTY")
 MULT_A, MULT_B = _NQ.multiplier, _RTY.multiplier
@@ -216,7 +218,7 @@ def main():
     sel_union = sel_entries[0] | sel_entries[1] | sel_entries[2]
 
     print(f"\n{'='*155}")
-    print(f"  CONFIGS SELECTIONNEES (A/B/C) + CANDIDATES COMPLEMENTAIRES (D-J)")
+    print("  CONFIGS SELECTIONNEES (A/B/C) + CANDIDATES COMPLEMENTAIRES (D-J)")
     print(f"{'='*155}")
 
     print(f"\n  {'Name':<10} {'OLS':>5} {'ZW':>3} {'prof':<10} {'window':<14} "
@@ -255,7 +257,7 @@ def main():
     # OVERLAP MATRIX
     # ================================================================
     print(f"\n{'='*155}")
-    print(f"  MATRICE D'OVERLAP (% trades communs)")
+    print("  MATRICE D'OVERLAP (% trades communs)")
     print(f"{'='*155}")
 
     names = [r["name"] for r in results]
@@ -277,7 +279,7 @@ def main():
         print(f"  ({ri['trades']}t)")
 
     # Pairwise A vs B vs C
-    print(f"\n  --- OVERLAP DETAILLE A/B/C ---")
+    print("\n  --- OVERLAP DETAILLE A/B/C ---")
     for i in range(3):
         for j in range(i+1, 3):
             ri, rj = results[i], results[j]
@@ -288,7 +290,7 @@ def main():
                   f"({pct_i:.0f}% de {ri['name']}, {pct_j:.0f}% de {rj['name']})")
 
     # Best complementary candidates (low overlap with ABC)
-    print(f"\n  --- CANDIDATES PAR COMPLEMENTARITE (overlap faible avec A+B+C) ---")
+    print("\n  --- CANDIDATES PAR COMPLEMENTARITE (overlap faible avec A+B+C) ---")
     cands = [(r, len(r["entry_bars_set"] & sel_union) / max(len(r["entry_bars_set"]), 1) * 100)
              for r in results[3:]]
     cands.sort(key=lambda x: x[1])

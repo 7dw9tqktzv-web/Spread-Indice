@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.utils.constants import Instrument, SIERRA_COLUMNS
+from src.utils.constants import SIERRA_COLUMNS, Instrument
 
 
 @dataclass

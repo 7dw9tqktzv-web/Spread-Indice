@@ -14,24 +14,27 @@ Usage:
 
 import sys
 import time as time_mod
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ── Constants ──
 # E-mini
@@ -225,7 +228,7 @@ def main():
             continue
 
         # ── Top 15 by PnL ──
-        print(f"\n  Top 15 by PnL:")
+        print("\n  Top 15 by PnL:")
         print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
               f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
               f"{'Trd':>4} {'WR%':>5} {'PnL':>9} {'PF':>5} {'Avg$':>6} "
@@ -247,7 +250,7 @@ def main():
 
         # ── Top 10 BALANCED (trades >= 50, PF >= 1.5) ──
         bal = sub[(sub["trades"] >= 50) & (sub["pf"] >= 1.3)].sort_values("pnl", ascending=False)
-        print(f"\n  Top 10 BALANCED (trades >= 50, PF >= 1.3):")
+        print("\n  Top 10 BALANCED (trades >= 50, PF >= 1.3):")
         if len(bal) > 0:
             print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
                   f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
@@ -273,7 +276,7 @@ def main():
     # SECTION 2: Comparison table — same config at x1, x2, x3 micro + E-mini
     # ══════════════════════════════════════════════════════════════════
     print(f"\n\n{'='*140}")
-    print(f" COMPARAISON SCALING : memes configs a x1, x2, x3 micro + E-mini")
+    print(" COMPARAISON SCALING : memes configs a x1, x2, x3 micro + E-mini")
     print(f"{'='*140}")
 
     # Pick 5 interesting configs from the micro x2 results
@@ -329,7 +332,7 @@ def main():
     # SECTION 3: OLS ConfigE for comparison
     # ══════════════════════════════════════════════════════════════════
     print(f"\n\n{'='*140}")
-    print(f" OLS CONFIG E — MICRO vs E-MINI")
+    print(" OLS CONFIG E — MICRO vs E-MINI")
     print(f"{'='*140}")
 
     est_ols = create_estimator("ols_rolling", window=3300, zscore_window=30)
@@ -378,7 +381,7 @@ def main():
     # SECTION 4: Distribution MaxDD micro x2
     # ══════════════════════════════════════════════════════════════════
     print(f"\n\n{'='*80}")
-    print(f" DISTRIBUTION MaxDD — Micro x2")
+    print(" DISTRIBUTION MaxDD — Micro x2")
     print(f"{'='*80}")
 
     micro2_all = rdf[rdf["n_contracts"] == 2].copy()

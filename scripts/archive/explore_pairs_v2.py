@@ -14,18 +14,19 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
-
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 SLIPPAGE = 1
 COMMISSION = 2.50
@@ -172,7 +173,7 @@ def run_pair(pair_name, leg_a, leg_b, mult_a, mult_b, tick_a, tick_b):
     print(f"\n  {len(profitable)} / {len(all_results)} configs profitables ({len(profitable)/max(len(all_results),1)*100:.1f}%)")
 
     # Print top 30 by PnL
-    print(f"\n  TOP 30 BY PNL:")
+    print("\n  TOP 30 BY PNL:")
     header = (f"  {'Label':<6} {'Window':<12} {'a':>8} {'Prof':<10} "
               f"{'ze':>5} {'zx':>4} {'zs':>4} {'c':>3} | "
               f"{'Trd':>5} {'WR%':>6} {'PnL':>10} {'PF':>6} {'Avg$':>7} {'Dur':>5} | "
@@ -201,7 +202,7 @@ def run_pair(pair_name, leg_a, leg_b, mult_a, mult_b, tick_a, tick_b):
     pf_sorted = [r for r in profitable if r["trades"] >= 30]
     pf_sorted.sort(key=lambda x: x["pf"], reverse=True)
     if pf_sorted:
-        print(f"\n  TOP 10 BY PF (min 30 trades):")
+        print("\n  TOP 10 BY PF (min 30 trades):")
         print(header)
         print("  " + "-" * 130)
         for r in pf_sorted[:10]:

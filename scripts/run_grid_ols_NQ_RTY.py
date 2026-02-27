@@ -12,10 +12,9 @@ import argparse
 import logging
 import sys
 import time
-from dataclasses import dataclass
-from itertools import product
-from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,17 +23,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_grid
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
 from src.signals.generator import generate_signals_numba
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.config.instruments import get_pair_specs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -227,7 +228,7 @@ def main():
     n_jobs = len(OLS_WINDOWS) * len(ZSCORE_WINDOWS) * len(METRIC_PROFILES) * len(ENTRY_WINDOWS)
     total = n_jobs * signal_combos
 
-    log.info(f"Grid OLS NQ_RTY:")
+    log.info("Grid OLS NQ_RTY:")
     log.info(f"  OLS windows:     {len(OLS_WINDOWS)} ({OLS_WINDOWS[0]} to {OLS_WINDOWS[-1]})")
     log.info(f"  Z-score windows: {len(ZSCORE_WINDOWS)} ({ZSCORE_WINDOWS[0]} to {ZSCORE_WINDOWS[-1]})")
     log.info(f"  z_entry:         {len(Z_ENTRIES)} ({Z_ENTRIES[0]} to {Z_ENTRIES[-1]})")
@@ -309,7 +310,7 @@ def main():
     # Quick top 20
     if not profitable.empty:
         top = profitable.nlargest(20, "pnl")
-        log.info(f"\nTOP 20 BY PNL:")
+        log.info("\nTOP 20 BY PNL:")
         log.info(f"  {'OLS':>6} {'ZW':>4} {'Prof':<10} {'Window':<14} "
                  f"{'ze':>5} {'zx':>4} {'zs':>4} {'conf':>4} | "
                  f"{'Trd':>5} {'WR%':>6} {'PnL':>10} {'PF':>6} {'Avg$':>7}")
@@ -324,7 +325,7 @@ def main():
         pf_pool = profitable[profitable["trades"] >= 30]
         if not pf_pool.empty:
             top_pf = pf_pool.nlargest(20, "profit_factor")
-            log.info(f"\nTOP 20 BY PF (min 30 trades):")
+            log.info("\nTOP 20 BY PF (min 30 trades):")
             log.info(f"  {'OLS':>6} {'ZW':>4} {'Prof':<10} {'Window':<14} "
                      f"{'ze':>5} {'zx':>4} {'zs':>4} {'conf':>4} | "
                      f"{'Trd':>5} {'WR%':>6} {'PnL':>10} {'PF':>6} {'Avg$':>7}")

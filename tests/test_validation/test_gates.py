@@ -1,7 +1,6 @@
 """Tests for binary gate filter module."""
 
 import numpy as np
-import pytest
 
 from src.validation.gates import apply_gate_filter_numba
 

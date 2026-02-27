@@ -1,12 +1,11 @@
 """Tests for Deflated Sharpe Ratio module."""
 
 import numpy as np
-import pytest
 
 from src.validation.deflated_sharpe import (
-    expected_max_sharpe,
-    deflated_sharpe_ratio,
     compute_dsr_for_config,
+    deflated_sharpe_ratio,
+    expected_max_sharpe,
 )
 
 

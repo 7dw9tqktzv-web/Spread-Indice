@@ -9,24 +9,27 @@ Usage:
 
 import sys
 import time as time_mod
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.backtest.engine import run_backtest_vectorized
 from src.data.cache import load_aligned_pair_cache
-from src.spread.pair import SpreadPair
-from src.utils.constants import Instrument
 from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
-from src.signals.generator import generate_signals_numba
 from src.signals.filters import (
-    ConfidenceConfig, compute_confidence,
-    _apply_conf_filter_numba, apply_window_filter_numba,
+    ConfidenceConfig,
+    _apply_conf_filter_numba,
+    apply_window_filter_numba,
+    compute_confidence,
 )
-from src.backtest.engine import run_backtest_vectorized
+from src.signals.generator import generate_signals_numba
+from src.spread.pair import SpreadPair
+from src.utils.constants import Instrument
 
 # ── Constants ──
 MULT_A, MULT_B = 20.0, 5.0
@@ -243,14 +246,14 @@ def main():
     # SECTION 1: SAFE CONFIGS (MaxDD < $4,500)
     # ══════════════════════════════════════════════════════════════════
     print(f"\n\n{'='*160}")
-    print(f" CONFIGS PROPFIRM-SAFE : MaxDD < $4,500 (Topstep 150k trailing DD)")
+    print(" CONFIGS PROPFIRM-SAFE : MaxDD < $4,500 (Topstep 150k trailing DD)")
     print(f"{'='*160}")
 
     if len(safe) > 0:
         safe = safe.sort_values("pnl", ascending=False)
 
         # Top 20 by PnL
-        print(f"\n  Top 20 by PnL (MaxDD < $4,500):")
+        print("\n  Top 20 by PnL (MaxDD < $4,500):")
         print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
               f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
               f"{'Trd':>4} {'WR%':>5} {'PnL':>9} {'PF':>5} {'Avg$':>6} "
@@ -269,7 +272,7 @@ def main():
 
         # Top 10 by PF (trades >= 30)
         safe_pf = safe[safe["trades"] >= 30].sort_values("pf", ascending=False)
-        print(f"\n  Top 10 by PF (MaxDD < $4,500, trades >= 30):")
+        print("\n  Top 10 by PF (MaxDD < $4,500, trades >= 30):")
         print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
               f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
               f"{'Trd':>4} {'WR%':>5} {'PnL':>9} {'PF':>5} {'Avg$':>6} "
@@ -285,7 +288,7 @@ def main():
 
         # Best balanced: trades >= 50, PF >= 1.5
         safe_bal = safe[(safe["trades"] >= 50) & (safe["pf"] >= 1.5)].sort_values("pnl", ascending=False)
-        print(f"\n  Top 10 BALANCED (MaxDD < $4,500, trades >= 50, PF >= 1.5):")
+        print("\n  Top 10 BALANCED (MaxDD < $4,500, trades >= 50, PF >= 1.5):")
         if len(safe_bal) > 0:
             print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
                   f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
@@ -309,11 +312,11 @@ def main():
     # ══════════════════════════════════════════════════════════════════
     if len(borderline) > 0:
         print(f"\n\n{'='*160}")
-        print(f" CONFIGS BORDERLINE : MaxDD $4,500 - $6,000")
+        print(" CONFIGS BORDERLINE : MaxDD $4,500 - $6,000")
         print(f"{'='*160}")
 
         borderline = borderline.sort_values("pnl", ascending=False)
-        print(f"\n  Top 10 by PnL (borderline MaxDD):")
+        print("\n  Top 10 by PnL (borderline MaxDD):")
         print(f"  {'#':<3} {'Alpha':>8} {'Prof':<11} {'Window':<12} "
               f"{'Zent':>5} {'Zex':>5} {'Zst':>5} {'Conf':>4} | "
               f"{'Trd':>4} {'WR%':>5} {'PnL':>9} {'PF':>5} {'Avg$':>6} "
@@ -331,7 +334,7 @@ def main():
     # SECTION 3: Distribution MaxDD
     # ══════════════════════════════════════════════════════════════════
     print(f"\n\n{'='*80}")
-    print(f" DISTRIBUTION MaxDD (toutes configs testees)")
+    print(" DISTRIBUTION MaxDD (toutes configs testees)")
     print(f"{'='*80}")
 
     bins = [0, 2000, 3000, 4000, 4500, 5000, 6000, 8000, 10000, 15000, 50000]

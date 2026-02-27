@@ -17,9 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.cache import load_aligned_pair_cache
+from src.hedge.factory import create_estimator
 from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
-from src.hedge.factory import create_estimator
 
 
 def analyze_kalman(pair_name, leg_a, leg_b, alpha):
@@ -31,7 +31,7 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
     pair = SpreadPair(leg_a=leg_a, leg_b=leg_b)
     aligned = load_aligned_pair_cache(pair, "5min")
     if aligned is None:
-        print(f"  ERREUR: pas de cache")
+        print("  ERREUR: pas de cache")
         return
 
     est = create_estimator("kalman", alpha_ratio=alpha, warmup=200, gap_P_multiplier=5.0)
@@ -49,7 +49,7 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
     spread_v = spread[valid] if not np.isnan(spread).all() else spread[valid]
 
     # === BETA ===
-    print(f"\n  --- BETA (hedge ratio) ---")
+    print("\n  --- BETA (hedge ratio) ---")
     print(f"  Mean:   {np.mean(beta_v):.4f}")
     print(f"  Median: {np.median(beta_v):.4f}")
     print(f"  Std:    {np.std(beta_v):.4f}")
@@ -65,7 +65,7 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
     print(f"  Beta change > 1% of beta: {(daily_beta_change.abs() > abs(daily_beta.mean()) * 0.01).sum()} jours")
 
     # === Z-SCORE ===
-    print(f"\n  --- Z-SCORE (innovation) ---")
+    print("\n  --- Z-SCORE (innovation) ---")
     zscore_clean = zscore_v[~np.isinf(zscore_v)]
     print(f"  Mean:   {np.mean(zscore_clean):.4f}")
     print(f"  Std:    {np.std(zscore_clean):.4f}")
@@ -77,12 +77,12 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
     print(f"  |z| > 2.5: {(np.abs(zscore_clean) > 2.5).sum()} bars ({(np.abs(zscore_clean) > 2.5).mean()*100:.1f}%)")
 
     # Z-score distribution check (should be ~N(0,1))
-    from scipy.stats import jarque_bera, normaltest
+    from scipy.stats import jarque_bera
     jb_stat, jb_p = jarque_bera(zscore_clean[:10000])  # subsample for speed
     print(f"  Jarque-Bera (N(0,1) test): stat={jb_stat:.1f}, p={jb_p:.4f}")
 
     # === DIRECTION SIGNAL ===
-    print(f"\n  --- DIRECTION (z-score sign) ---")
+    print("\n  --- DIRECTION (z-score sign) ---")
     positive_z = (zscore_clean > 0).sum()
     negative_z = (zscore_clean < 0).sum()
     print(f"  z > 0 (short spread): {positive_z} bars ({positive_z/len(zscore_clean)*100:.1f}%)")
@@ -93,13 +93,13 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
     yearly_direction = zscore_series.groupby(zscore_series.index.year).apply(
         lambda x: (x > 0).sum() / len(x) * 100
     )
-    print(f"\n  Direction par annee (% z>0 = short bias):")
+    print("\n  Direction par annee (% z>0 = short bias):")
     for y, pct in yearly_direction.items():
         bias = "SHORT" if pct > 55 else ("LONG" if pct < 45 else "NEUTRAL")
         print(f"    {y}: {pct:.1f}% short | {100-pct:.1f}% long  [{bias}]")
 
     # === SPREAD ===
-    print(f"\n  --- SPREAD (log_NQ - beta * log_RTY) ---")
+    print("\n  --- SPREAD (log_NQ - beta * log_RTY) ---")
     spread_clean = spread_v[~np.isnan(spread_v)]
     if len(spread_clean) > 0:
         print(f"  Mean:   {np.mean(spread_clean):.6f}")
@@ -109,7 +109,7 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
 
     # === DIAGNOSTICS (P_trace, K_beta) ===
     if hr.diagnostics is not None:
-        print(f"\n  --- DIAGNOSTICS ---")
+        print("\n  --- DIAGNOSTICS ---")
         diag = hr.diagnostics
         if isinstance(diag, dict):
             for k, v in diag.items():
@@ -126,20 +126,20 @@ def analyze_kalman(pair_name, leg_a, leg_b, alpha):
                 print(f"  K_beta (gain): mean={kb.mean():.6f}")
 
     # === TEXTBOX MOCKUP ===
-    print(f"\n  --- TEXTBOX SIERRA (exemple derniere valeur) ---")
+    print("\n  --- TEXTBOX SIERRA (exemple derniere valeur) ---")
     last_i = len(beta) - 1
     last_beta = beta[last_i]
     last_z = zscore[last_i] if not np.isnan(zscore[last_i]) else 0
     last_date = idx[last_i]
     direction = "SHORT" if last_z > 0 else "LONG"
 
-    print(f"  +----------------------------------+")
+    print("  +----------------------------------+")
     print(f"  | {pair_name} Kalman a={alpha:.0e}      |")
     print(f"  | Beta: {last_beta:>8.4f}                |")
     print(f"  | Z-score: {last_z:>+7.3f}              |")
     print(f"  | Direction: {direction:<6}              |")
     print(f"  | {last_date.strftime('%Y-%m-%d %H:%M')}             |")
-    print(f"  +----------------------------------+")
+    print("  +----------------------------------+")
 
     return {
         "beta_mean": np.mean(beta_v),
@@ -158,7 +158,7 @@ def main():
     # Comparison
     if res_nrt and res_nym:
         print(f"\n\n{'='*100}")
-        print(f"  COMPARAISON NQ/RTY vs NQ/YM")
+        print("  COMPARAISON NQ/RTY vs NQ/YM")
         print(f"{'='*100}")
         print(f"  {'Metrique':<25} {'NQ/RTY':>12} {'NQ/YM':>12}")
         print(f"  {'-'*50}")

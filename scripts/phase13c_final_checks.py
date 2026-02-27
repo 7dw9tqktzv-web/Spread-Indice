@@ -16,6 +16,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+
+# ======================================================================
+# Config D (final)
+# ======================================================================
+from src.config.instruments import get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_time_stop, apply_window_filter_numba
@@ -24,12 +29,6 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-
-# ======================================================================
-# Config D (final)
-# ======================================================================
-
-from src.config.instruments import get_pair_specs
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -163,7 +162,7 @@ def main():
 
     # Percentiles
     pcts = [5, 10, 25, 50, 75, 90, 95, 99]
-    print(f"\n  Max Drawdown Distribution:")
+    print("\n  Max Drawdown Distribution:")
     print(f"  {'Percentile':>12} {'Max DD':>10} {'Propfirm $5K':>14}")
     for p in pcts:
         dd = np.percentile(mc_dds, p)
@@ -247,7 +246,7 @@ def main():
     # ======================================================================
     # Breakeven slippage
     # ======================================================================
-    print(f"\n  Breakeven analysis:")
+    print("\n  Breakeven analysis:")
     ref_avg_pnl = float(pnls.mean())
     # Each extra tick costs approximately: 2 * (tick_a * mult_a + tick_b * mult_b) / 2 per leg
     # Actually it's: entry slip + exit slip for each leg
@@ -264,13 +263,13 @@ def main():
     print(" SUMMARY")
     print("=" * 100)
 
-    print(f"\n  Monte Carlo:")
+    print("\n  Monte Carlo:")
     print(f"    95th pct DD: ${np.percentile(mc_dds, 5):+,.0f}")
     print(f"    Prob(breach $5K): {pct_breach_5k:.1f}%")
     mc_verdict = "SAFE" if pct_breach_5k < 10 else "WARN" if pct_breach_5k < 25 else "DANGER"
     print(f"    Verdict: {mc_verdict}")
 
-    print(f"\n  Slippage:")
+    print("\n  Slippage:")
     bt_2 = reconstruct_d(aligned, px_a, px_b, idx, minutes, slippage_ticks=2)
     slip_verdict = "SAFE" if bt_2["profit_factor"] > 1.5 else "WARN" if bt_2["profit_factor"] > 1.2 else "DANGER"
     print(f"    PF at 2 ticks: {bt_2['profit_factor']:.2f}")

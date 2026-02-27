@@ -28,6 +28,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import run_backtest_vectorized
+
+# --- Constants ---
+from src.config.instruments import DEFAULT_SLIPPAGE_TICKS, get_pair_specs
 from src.data.cache import load_aligned_pair_cache
 from src.hedge.factory import create_estimator
 from src.signals.filters import apply_window_filter_numba
@@ -36,9 +39,6 @@ from src.spread.pair import SpreadPair
 from src.utils.constants import Instrument
 from src.validation.cpcv import CPCVConfig, run_cpcv
 from src.validation.gates import GateConfig, apply_gate_filter_numba, compute_gate_mask
-
-# --- Constants ---
-from src.config.instruments import get_pair_specs, DEFAULT_SLIPPAGE_TICKS
 
 _NQ, _YM = get_pair_specs("NQ", "YM")
 MULT_A, MULT_B = _NQ.multiplier, _YM.multiplier
@@ -482,7 +482,7 @@ def compute_metrics(pnls, exit_types, entry_bars, exit_bars, n_bars):
 def print_results(results):
     """Print formatted results table + exit type details."""
     print(f"\n{'='*120}")
-    print(f"  DOLLAR TP/SL GRID -- Config D + 1s precision + CPCV(10,2)")
+    print("  DOLLAR TP/SL GRID -- Config D + 1s precision + CPCV(10,2)")
     print(f"{'='*120}\n")
 
     # Header
@@ -526,7 +526,7 @@ def print_results(results):
 
     # --- Detailed exit PnL breakdown for top configs ---
     print(f"\n{'='*90}")
-    print(f"  EXIT TYPE PnL BREAKDOWN -- Top 10 configs by PF")
+    print("  EXIT TYPE PnL BREAKDOWN -- Top 10 configs by PF")
     print(f"{'='*90}\n")
 
     for r in sorted_results[:10]:
@@ -546,7 +546,7 @@ def print_results(results):
 
     # --- Matrix views ---
     print(f"\n{'='*70}")
-    print(f"  PF MATRIX  (rows=SL, cols=TP)")
+    print("  PF MATRIX  (rows=SL, cols=TP)")
     print(f"{'='*70}\n")
 
     # Build lookup
@@ -576,7 +576,7 @@ def print_results(results):
 
     # PnL matrix
     print(f"\n{'='*70}")
-    print(f"  PnL MATRIX ($)  (rows=SL, cols=TP)")
+    print("  PnL MATRIX ($)  (rows=SL, cols=TP)")
     print(f"{'='*70}\n")
 
     tp_header = f"{sl_tp:>8}"
@@ -598,7 +598,7 @@ def print_results(results):
 
     # CPCV paths+ matrix
     print(f"\n{'='*70}")
-    print(f"  CPCV PATHS+ (%)  (rows=SL, cols=TP)")
+    print("  CPCV PATHS+ (%)  (rows=SL, cols=TP)")
     print(f"{'='*70}\n")
 
     tp_header = f"{sl_tp:>8}"

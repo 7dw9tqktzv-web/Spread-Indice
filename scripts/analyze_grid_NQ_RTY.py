@@ -77,7 +77,7 @@ def main():
     # TOP CONFIGS — by different profiles
     # ================================================================
     print(f"\n\n{'='*120}")
-    print(f"  TOP CONFIGS BY PROFILE")
+    print("  TOP CONFIGS BY PROFILE")
     print(f"{'='*120}")
 
     # Filter: min 50 trades for robustness
@@ -86,37 +86,37 @@ def main():
 
     # 1. Volume champion: most trades with PF > 1.3
     vol = robust[robust["profit_factor"] > 1.3].sort_values("trades", ascending=False)
-    print(f"\n  --- VOLUME (max trades, PF > 1.3) ---")
+    print("\n  --- VOLUME (max trades, PF > 1.3) ---")
     _print_top(vol, 10)
 
     # 2. Quality champion: highest PF with trades >= 80
     qual = robust[robust["trades"] >= 80].sort_values("profit_factor", ascending=False)
-    print(f"\n  --- QUALITY (max PF, trades >= 80) ---")
+    print("\n  --- QUALITY (max PF, trades >= 80) ---")
     _print_top(qual, 10)
 
     # 3. Balanced: best PnL * PF product with trades >= 100
     bal = robust[robust["trades"] >= 100].copy()
     bal["score"] = bal["pnl"] * bal["profit_factor"]
     bal = bal.sort_values("score", ascending=False)
-    print(f"\n  --- BALANCED (PnL*PF, trades >= 100) ---")
+    print("\n  --- BALANCED (PnL*PF, trades >= 100) ---")
     _print_top(bal, 10)
 
     # 4. Sniper: best avg_pnl_trade with trades >= 50
     snp = robust.sort_values("avg_pnl_trade", ascending=False)
-    print(f"\n  --- SNIPER (max avg PnL/trade, trades >= 50) ---")
+    print("\n  --- SNIPER (max avg PnL/trade, trades >= 50) ---")
     _print_top(snp, 10)
 
     # 5. PropFirm: PF > 1.5, trades >= 60, low risk proxy (high WR)
     pf = robust[(robust["profit_factor"] > 1.5) & (robust["trades"] >= 60)].copy()
     pf = pf.sort_values("win_rate", ascending=False)
-    print(f"\n  --- PROPFIRM (PF > 1.5, trades >= 60, max WR) ---")
+    print("\n  --- PROPFIRM (PF > 1.5, trades >= 60, max WR) ---")
     _print_top(pf, 10)
 
     # ================================================================
     # SWEET SPOT ANALYSIS — 2D heatmaps (alpha x z_entry)
     # ================================================================
     print(f"\n\n{'='*120}")
-    print(f"  SWEET SPOT: alpha x z_entry (avg PF, min 20 configs)")
+    print("  SWEET SPOT: alpha x z_entry (avg PF, min 20 configs)")
     print(f"{'='*120}")
 
     pivot = prof.groupby(["alpha", "z_entry"]).agg(
@@ -151,7 +151,7 @@ def main():
     # FINAL TOP 5 SELECTION (for validate script)
     # ================================================================
     print(f"\n\n{'='*120}")
-    print(f"  FINAL TOP 5 SELECTION FOR VALIDATION")
+    print("  FINAL TOP 5 SELECTION FOR VALIDATION")
     print(f"{'='*120}")
 
     selected = []
@@ -195,7 +195,7 @@ def main():
         print()
 
     # Print as Python dict for validate script
-    print(f"\n  --- PYTHON CONFIG DICT (copy to validate_top_NQ_RTY.py) ---\n")
+    print("\n  --- PYTHON CONFIG DICT (copy to validate_top_NQ_RTY.py) ---\n")
     print("CONFIGS = {")
     for i, (pname, row) in enumerate(selected):
         window_str = row.get("window", "05:00-12:00")
@@ -208,7 +208,7 @@ def main():
         print(f'        "z_exit": {row["z_exit"]:.4f},')
         print(f'        "z_stop": {row["z_stop"]:.4f},')
         print(f'        "min_confidence": {row["min_confidence"]:.0f},')
-        print(f'    }},')
+        print('    },')
     print("}")
 
 
