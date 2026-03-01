@@ -494,29 +494,104 @@ File: `sierra/GC_SI_SpreadMeanReversion_v2.0_micro.cpp` (1733 lines). MGC/SIL au
 
 ## Instruments and Contract Specifications
 
-### Standard Contracts
+Full specs in `sierra/specs_futures.md`. Summary below for quick reference.
 
-| | NQ | ES | RTY | YM |
-|---|---|---|---|---|
-| **Multiplier** | $20/pt | $50/pt | $50/pt | $5/pt |
-| **Tick Size** | 0.25 | 0.25 | 0.10 | 1.00 |
-| **Tick Value** | $5.00 | $12.50 | $5.00 | $5.00 |
-| **Commission** | $2.50 RT | $2.50 RT | $2.50 RT | $2.50 RT |
-| **Margin** | $18,000 | $13,000 | $7,500 | $9,500 |
-| **Sierra Symbol** | NQ.D-CME | ES.D-CME | RTY.D-CME | YM.D-CME |
+### Equity Index (Session 17:00-16:00 CT, pause 60 min)
 
-### Micro Contracts
+| Symbol | $/pt | Tick | Tick $ | Micro | Micro $/pt |
+|--------|------|------|--------|-------|------------|
+| NQ | $20 | 0.25 | $5.00 | MNQ | $2 |
+| ES | $50 | 0.25 | $12.50 | MES | $5 |
+| RTY | $50 | 0.10 | $5.00 | M2K | $5 |
+| YM | $5 | 1.00 | $5.00 | MYM | $0.50 |
 
-| | MNQ | MYM |
-|---|---|---|
-| **Multiplier** | $2/pt | $0.50/pt |
-| **Tick Size** | 0.25 | 1.00 |
-| **Tick Value** | $0.50 | $0.50 |
-| **Commission** | $0.79 RT | $0.79 RT |
-| **Margin** | $1,800 | $950 |
-| **Sierra Symbol** | MNQ.D-CME | MYM.D-CME |
+### Metals (Session 17:00-16:00 CT, pause 60 min)
 
-Micros = 1/10th of standard. Same prices, same tick size, lower commission.
+| Symbol | $/pt | Tick | Tick $ | Micro | Micro $/pt |
+|--------|------|------|--------|-------|------------|
+| GC | $100 | 0.10 | $10.00 | MGC | $10 |
+| SI | $5,000 | 0.005 | $25.00 | SIL | $1,000 |
+| HG | $25,000 | 0.0005 | $12.50 | -- | -- |
+| PL | $50 | 0.10 | $5.00 | -- | -- |
+
+### Energy NYMEX (Globex 17:00-16:00 CT, RTH 8:00-13:30 CT)
+
+#### Standard
+| Symbol | Produit | Contrat | $/pt | Tick | Tick $ |
+|--------|---------|---------|------|------|--------|
+| CL | Crude Oil WTI | 1,000 barils | $1,000 | 0.01 | $10.00 |
+| HO | Heating Oil (ULSD) | 42,000 gallons | $42,000 | 0.0001 | $4.20 |
+| RB | RBOB Gasoline | 42,000 gallons | $42,000 | 0.0001 | $4.20 |
+| NG | Natural Gas | 10,000 MMBtu | $10,000 | 0.001 | $10.00 |
+
+#### E-mini
+| Symbol | Produit | Contrat | Ratio | Tick | Tick $ | Settlement |
+|--------|---------|---------|-------|------|--------|------------|
+| QM | E-mini Crude Oil | 500 barils | 1/2 CL | 0.025 | $12.50 | Financial |
+| QH | E-mini ULSD (HO) | 21,000 gallons | 1/2 HO | 0.001 | $21.00 | Physical |
+| QG | E-mini Nat Gas | 2,500 MMBtu | 1/4 NG | 0.005 | $12.50 | Financial |
+
+#### Micro
+| Symbol | Produit | Contrat | Ratio | Tick | Tick $ | Settlement |
+|--------|---------|---------|-------|------|--------|------------|
+| MCL | Micro Crude Oil | 100 barils | 1/10 CL | 0.01 | $1.00 | Physical |
+| MRB | Micro RBOB | 4,200 gallons | 1/10 RB | 0.0001 | $0.42 | Physical |
+| MNG | Micro Nat Gas | 1,000 MMBtu | 1/10 NG | 0.001 | $1.00 | Financial |
+
+Note : HO n'a PAS de micro, seulement un e-mini (QH). RB n'a PAS d'e-mini, seulement un micro (MRB).
+Toutes les specs vérifiées sur Barchart (source CME/NYMEX).
+
+### Convention symboles Denali vs Rithmic
+
+**Denali/Teton** : `[ROOT][MOIS][AA]_FUT_CME` (ex: CLJ26_FUT_CME). `_CME` pour tout CME Group.
+**Rithmic** : `[ROOT][MOIS][A]` (ex: CLJ6). Pas de suffixe, exchange séparé.
+**Mois** : F(Jan) G(Feb) H(Mar) J(Apr) K(May) M(Jun) N(Jul) Q(Aug) U(Sep) V(Oct) X(Nov) Z(Dec).
+`Edit >> Translate Symbols to Current Service` fait la conversion auto entre les deux formats.
+
+Symboles énergie Rithmic : CL, HO, RB, NG (standard) | QM, QH, QG (e-mini) | MCL, MRB, MNG (micro).
+Symboles indices Rithmic : ES, NQ, YM (CBOT), RTY | MES, MNQ, MYM (CBOT), M2K.
+
+### Grains CBOT (Globex 19:00-7:45 + 8:30-13:20 CT SPLIT, RTH 8:30-13:20 CT)
+
+**Session SPLIT** : pause 45 min entre 7:45 et 8:30 CT (contrairement indices/énergie/métaux = continu).
+
+#### Standard
+| Symbol | Produit | Contrat | $/pt | Tick | Tick $ | Mois |
+|--------|---------|---------|------|------|--------|------|
+| ZC | Corn | 5,000 bu | $50/¢ | 1/4¢ ($0.0025/bu) | $12.50 | H,K,N,U,Z |
+| ZW | SRW Wheat | 5,000 bu | $50/¢ | 1/4¢ ($0.0025/bu) | $12.50 | H,K,N,U,Z |
+| ZS | Soybeans | 5,000 bu | $50/¢ | 1/4¢ ($0.0025/bu) | $12.50 | F,H,K,N,Q,U,X |
+| ZL | Soybean Oil | 60,000 lbs | $600/¢ | 0.01¢ ($0.0001/lb) | $6.00 | F,H,K,N,Q,U,V,Z |
+| ZM | Soybean Meal | 100 tons | $100/$ | $0.10/ton | $10.00 | F,H,K,N,Q,U,V,Z |
+
+#### Micro (lancés 24 février 2025, CBOT, financial settlement)
+| Symbol | Produit | Contrat | Ratio | Tick | Tick $ | $/pt |
+|--------|---------|---------|-------|------|--------|------|
+| MZC | Micro Corn | 500 bu | 1/10 ZC | 1/2¢ ($0.005/bu) | $2.50 | $5/¢ |
+| MZW | Micro Wheat | 500 bu | 1/10 ZW | 1/2¢ ($0.005/bu) | $2.50 | $5/¢ |
+| MZS | Micro Soybeans | 500 bu | 1/10 ZS | 1/2¢ ($0.005/bu) | $2.50 | $5/¢ |
+| MZL | Micro Soy Oil | 6,000 lbs | 1/10 ZL | 0.02¢ ($0.0002/lb) | $1.20 | $60/¢ |
+| MZM | Micro Soy Meal | 10 tons | 1/10 ZM | $0.20/ton | $2.00 | $10/$ |
+
+Note : tick micro ag = 2x le tick standard (particularité ag). Tick value micro = 1/5 standard.
+Mêmes mois et mêmes horaires que le standard. Source : CME Group FAQ officiel.
+
+#### Mini (legacy, faible liquidité -- remplacés de facto par micro)
+| Symbol | Contrat | Ratio | Tick | Tick $ | Settlement |
+|--------|---------|-------|------|--------|------------|
+| XC | 1,000 bu | 1/5 ZC | 1/8¢ | $1.25 | Financial |
+
+Symboles grains Rithmic : ZC, ZW, ZS, ZL, ZM (std) | MZC, MZW, MZS, MZL, MZM (micro).
+Denali : ZCN26_FUT_CME, MZCN26_FUT_CME, etc. (_FUT_CME pour tout CME Group incl. CBOT).
+
+### Interest Rates (Session 17:00-16:00 CT, pause 60 min)
+
+| Symbol | Face | $/pt | Tick | Tick $ |
+|--------|------|------|------|--------|
+| ZT | $200K | $2,000 | 1/128 | $15.625 |
+| ZF | $100K | $1,000 | 1/128 | $7.8125 |
+| ZN | $100K | $1,000 | 1/64 | $15.625 |
+| ZB | $100K | $1,000 | 1/32 | $31.25 |
 
 ### Sierra Chart Numbers (Multi-Chart Access)
 
@@ -544,14 +619,27 @@ All use Continuous Back-adjusted Volume rollover (CBV). Data feed: Denali Exchan
 
 | Window | Time (CT) | Purpose |
 |--------|-----------|---------|
-| **Globex** | 17:00-16:00 | Full exchange session |
+| **Globex equity/metals/energy/bonds** | 17:00-16:00 | Full session (pause 16:00-17:00, 60 min) |
+| **Globex grains (ZW/ZC/ZS/ZL/ZM)** | 19:00-7:45 + 8:30-13:20 | SPLIT session (pause 45min 7:45-8:30, puis 13:20-19:00) |
 | **Buffered session** | 17:30-15:30 | Hedge/metrics calculation (264 bars/day) |
 | **OLS trading** | 02:00-14:00 (Config E) | Entry window |
 | **Kalman trading** | 03:00-12:00 (K_Balanced) | Overlay window |
-| **Flat time** | 15:30 | Force-close all positions |
+| **Flat time NQ/YM** | 15:30 | Force-close all positions |
 | **GC_SI flat** | 14:55 | GC_SI force-flat time |
 
 Session wraps midnight -> OR logic: `t >= 17:30 OR t < 15:30`. 264 bars/day = 22h x 12 bars/h at 5min.
+
+### RTH (Regular Trading Hours) par produit
+
+| Produit | RTH (CT) | Globex (CT) | Source |
+|---------|----------|-------------|--------|
+| NQ, ES, YM, RTY | 8:30 - 15:00 | 17:00 - 16:00 | NYSE/NASDAQ cash |
+| CL, HO, RB, NG | 8:00 - 13:30 | 17:00 - 16:00 | Ancien pit NYMEX |
+| GC (Gold) | 7:20 - 12:30 | 17:00 - 16:00 | COMEX (vérifié Barchart) |
+| SI (Silver) | 7:25 - 12:25 | 17:00 - 16:00 | COMEX (vérifié Barchart) |
+| ZW, ZC, ZS, ZL, ZM | 8:30 - 13:20 | 19:00-7:45 + 8:30-13:20 (SPLIT) | Ancien pit CBOT |
+
+Vérifié via Barchart (données CME/NYMEX). Pour charts cash Sierra, utiliser les horaires RTH.
 
 ### Regression Convention
 `log(NQ) = alpha + beta * log(YM) + epsilon` -- NQ dependent (leg_a), YM explanatory (leg_b). Both OLS and Kalman use same convention. Beta directly usable in sizing.
@@ -590,6 +678,82 @@ One leg fills, other doesn't or fills worse. Mitigation: leg less liquid instrum
 
 ---
 
+## Chartbook Configuration & Built-in Studies
+
+### Chart Header
+- **DChg%** uses **previous settlement price** (CME) as reference, NOT session open. Known discrepancy with Percent Change Since Open study.
+- **DV** = session volume. Both DChg% and DV are Globex session values.
+- **Labels (DChg, DV, etc.) are hardcoded** -- cannot be renamed.
+- Customize visible fields: `Global Settings >> Customize Chart Header - Standard`
+- Font: `Global Settings >> Graphics Settings >> Fonts tab >> Chart Text`
+- Colors: `Global Settings >> Graphics Settings >> Colors and Widths >> Net Change Up/Down`
+
+### Daily OHLC (Study ID=137)
+Draws Open/High/Low/Close horizontal lines on intraday chart.
+- **Use this Intraday Chart** = Yes (uses own chart data, no external ref needed)
+- **Reference Days Back** = 0 (current day only) or 1+ for previous days
+- **Graph High Low Historically** = Yes (show HH/LL on past days too)
+- **Display on Day Session Only** = Yes (requires Evening Session config)
+- **Value label only (no dash)**: change Draw Style to **Text** in Subgraphs tab (shows price label on Values Scale without drawing a line)
+
+### Horizontal Line at Time (Study ID=306)
+Draws horizontal line at price level at a specific time. Good for Cash Open (8:30 CT).
+- **Start Time** = 08:30:00 (time of the level)
+- **Use Stop Time** = Yes, **Stop Time** = 16:00:00 (line stops extending)
+- **Limit Horizontal Line From Time To 1 Day** = Yes (prevents extension to next day)
+- **Ignore Weekends** = Yes (no phantom lines on weekends)
+
+### Percent Change Since Open (Study ID=325)
+Formula: `v * (Current - Open_bar1) / Open_bar1`. **Multiplier must = 100** for true percent.
+- Uses **first bar of trading day** as reference (session open at 17:00 CT)
+- Does NOT match header DChg% (different reference: settlement vs session open)
+
+### Text Display For Study from Chart (Study ID=334)
+Displays a study value from another chart as text overlay on current chart.
+- Use to show cash session values (%, volume) on Globex chart
+- Source chart must be open (can be minimized as floating window)
+
+### Study/Price Overlay
+- **Fill Blanks With Last Value** = No (prevents line extension across non-data periods)
+- Discontinuities if cash session overlaid on Globex chart (vertical jumps between days)
+
+### Hiding Charts (Window >> Hide Window)
+- **Menu**: `Window >> Hide Window` -- chart disappears from screen entirely
+- **Still active**: receives data, calculates studies, cross-chart references work (confirmed by SC Engineering)
+- **Restore**: via **CW menu** (top bar) -- hidden charts listed there
+- **Tab indicator**: `Global Settings >> General Settings >> Windows >> Show Hidden Windows on MDI Tabs` shows hidden charts with "H:" prefix
+- **CRITICAL**: `General Settings >> GUI >> Destroy Chart Windows When Hidden` must be **No** -- otherwise charts are destroyed on chartbook switch and cross-chart refs break
+- **MDI Minimize Method**: `General Settings >> GUI >> MDI Child Window Minimize Method` can be set to "Hide Window" so minimize button = hide
+
+### VWAP Weekly (Study ID=108)
+- **Time Period Type** = Weeks, **Time Period Length** = 1
+- **Base on Underlying Data** = Yes (more accurate on 5min)
+- Bands: VWAP Variance method, multipliers 0.5/1/1.5/2
+- **Do NOT enable "Use Monday as Start of Week"** for futures — Globex week starts Sunday 17:00 CT, default Sunday behavior is correct
+- Chart must load 7+ days of data
+
+### Time Range Highlight - Transparent (Study ID=316)
+Shades chart background for a time range. Semi-transparent, doesn't obscure candles.
+- **Start Time** = 08:30:00, **End Time** = 15:00:00 (cash session highlight)
+- Color set in Subgraphs tab
+
+### Volume (Study ID=8)
+- **Chart Region** = 2 (separate region below price). No inputs.
+- Primary color = up bars, Secondary color = down bars (auto based on Close vs Open)
+
+### Countdown Timer (Study ID=201)
+- **Display Continuous Time Countdown Based on Real-Time Clock** = Yes (otherwise only advances on trades)
+- Position inputs only work on first add — after that, right-click >> Move Drawing
+- Increases CPU usage slightly — use on few charts only
+
+### Practical Tips
+- **Set Defaults** button in study settings saves inputs for all future instances of that study type
+- Cash session chart: create separate chart with Session Start=08:30, Session End=15:30 (or 16:00)
+- Cross-chart refs (Text Display, Study/Price Overlay, ACSIL) require charts in **same chartbook** and **open** (hidden = OK, closed = broken)
+- **Draw Style "Text"** = shows value label only, no line/dash on chart
+
+---
+
 ## Python vs C++ Differences to Watch
 
 | Aspect | Python Phase 1 | C++ Sierra |
@@ -616,3 +780,95 @@ One leg fills, other doesn't or fills worse. Mitigation: leg less liquid instrum
 - OLS engine on NQ/YM pair, Kalman parallel for overlay
 - Build: Visual Studio 2022 Build Tools
 - Source location: `F:\SierreChart_Spread_Indices\ACS_Source\`
+
+---
+
+## Denali Exchange Data Feed & Teton Order Routing
+
+### Abonnement & Compte actifs
+- **Full CME Group** (CME, CBOT, COMEX, NYMEX) nonprofessional -- **$6/mois**, auto-renew
+- Couvre : NQ, ES, RTY, YM, MNQ, MYM, MES, M2K + métaux (GC, SI, MGC, SIL) + énergie (CL, NG)
+- **Order routing** : Teton CME Routing [trading]
+- **Clearing firm** : Dorman/Stage5 (compte funded, PAS pour trading live -- uniquement pour autoriser Denali real-time)
+- Requiert un compte trading funded actif (sinon Denali retombe en delayed)
+- **Trading live futur** : propfirm (Apex, TopStep, etc.) via **Rithmic order routing only**
+- Sierra supporte dual connexion single-instance : Denali (data) + Rithmic (order routing propfirm)
+- **Config critique** : Rithmic connexion → Common Settings → "Allow Support for Sierra Chart Data Feeds" = **Yes**
+- Laisser Market Data / Historical Data vides côté Rithmic (Denali gère tout)
+- Si symboles cassés : `Edit → Translate Symbols to Current Service`
+- Pas de frais data en double (1 seul abonnement Denali suffit)
+- Doc officielle : sierrachart.com/DenaliExchangeDataFeed.php#IntegrationWithTradingServices
+
+### Guide : Denali data + Rithmic order routing propfirm (single instance)
+
+**Prérequis** : Sierra Package 10+, compte propfirm avec identifiants Rithmic, Denali déjà actif.
+
+1. `Global Settings >> Data/Trade Service Settings`
+2. **Current Selected Service** → "Rithmic Direct - DTC [Trading]" → OK → attendre 5-10s
+3. Rouvrir settings, dans **Service Settings** :
+   - **Server** : celui indiqué par la propfirm
+   - **Trading Username/Password** : identifiants propfirm (case-sensitive)
+   - **Market Data Username** : **VIDE** (Denali gère)
+   - **Market Data Password** : **VIDE**
+   - **Historical Data Username/Password** : **VIDE**
+4. Onglet **[Common Settings]** → **"Allow Support for Sierra Chart Data Feeds" = Yes** (CRITIQUE)
+5. OK → `File >> Reconnect`
+6. `Edit >> Translate Symbols to Current Service` (convertit symboles au format Rithmic)
+7. Vérifier : **[M]** après symboles = Denali actif, compte propfirm visible dans Trade Window
+
+**Pour revenir à Teton** : même procédure, re-sélectionner "Teton CME Routing".
+
+### Instances multiples Sierra Chart
+
+- **1 licence suffit** pour N installations sur le même PC
+- Installer dans des dossiers séparés (ex: `C:\SierraChart\`, `C:\SierraChart2\`)
+- Chaque instance = Data Files Folder différent (éviter conflits)
+- Changer titre fenêtre : `Global Settings >> General Settings >> GUI`
+- **Max 3 connexions Denali par PC** (limite CME, pas Sierra)
+- Exemples de setup :
+  - Instance 1 : Teton/Dorman (analyse, simulation)
+  - Instance 2 : Rithmic propfirm #1 (trading live)
+  - Instance 3 : Rithmic propfirm #2 (trading live)
+- 4e instance : doit désactiver Denali (utiliser data Rithmic) ou utiliser un 2e PC
+- Toutes partagent le même abonnement Denali, pas de frais supplémentaires
+
+### Denali = DATA (Exchange → Toi)
+- Data feed propriétaire Sierra Chart, connexion **directe CME via FIX** (pas d'intermédiaire Rithmic/CQG)
+- Serveurs au **Equinix Cermak Road, Chicago** -- datacenter de référence marchés US
+- **Tick-by-tick non filtré**, timestamp milliseconde
+- **Market Depth** complet non filtré : **500 niveaux** CME (vs ~10-20 retail typique)
+- **Bid/Ask trade volume** 100% précis sur CME (attribution correcte bid/ask)
+- **Historique profond** : ticks depuis 2011 (CME), barres 1min depuis 2008-2010, daily 15+ ans
+- Futures spreads (sept 2015+), options futures CME (sept 2017+)
+- Protocole DTC, traitement en background thread, stockage SSD
+- Coût : exchange fees nonpro $1.50-$30/mois CME ; pro $115-$462/mois
+
+### Teton = ORDRES (Toi → Exchange)
+- Order routing propriétaire Sierra Chart, **colocalisé Aurora IL avec moteurs matching CME**
+- Connexion **directe CME/CBOT/NYMEX/COMEX** sans provider intermédiaire
+- Latence : **< 500 microsecondes** (0.5ms) standard
+- **Quad connections** + triple redondance internet (Zayo, Verizon, Cogent)
+- **Zéro frais de transaction** Sierra (uniquement commissions clearing firm)
+- **OCO et brackets server-side** (survivent à une déconnexion)
+- 1400 niveaux market depth supportés
+- Historique fills 2+ ans, Web Trading Panel mobile 24/7
+- **Broker-agnostique** : le choix du clearing firm n'affecte PAS la vitesse (confirmé SC Engineering)
+- Clearing firms : Edge Clear, Ironbeam, AMP, Optimus, Dorman, Phillip Capital, Stage 5, etc. (~17)
+
+### Pourquoi Denali est performant vs alternatives (Rithmic, CQG)
+1. **Pas d'intermédiaire** : CME → Sierra direct. Chaque intermédiaire ajoute latence + peut filtrer/agréger
+2. **Données non filtrées** : chaque tick individuel transmis (certains feeds agrègent les ticks rapides)
+3. **Profondeur 500 niveaux** vs 10-20 typique -- essentiel pour orderflow
+4. **Historique massif** : Rithmic = quelques jours, Denali = depuis 2011
+5. **Stabilité** : zero issues reportées vs problèmes connectivité Rithmic signalés
+6. **Recommandé par SC** : "utilisez Denali sauf si on n'a pas l'exchange"
+
+### Denali + Teton = Stack intégré pour Spread Trading
+```
+CME (Aurora IL) --data--> Denali (Equinix Chicago) --> Sierra/ACSIL --> signal
+CME (Aurora IL) <--orders-- Teton (Coloc Aurora) <-- sc.BuyOrder()
+```
+- Denali fournit ticks NQ+YM pour calcul spread/z-score temps réel dans ACSIL
+- Teton route les ordres des 2 legs directement au CME (< 500μs)
+- Colocation Teton essentielle pour spread : 2 legs quasi-simultanées = minimise legging risk
+- Stack 100% Sierra = aucun tiers entre code ACSIL et CME (data ET ordres)
