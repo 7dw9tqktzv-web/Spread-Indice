@@ -505,14 +505,37 @@ Full specs in `sierra/specs_futures.md`. Summary below for quick reference.
 | RTY | $50 | 0.10 | $5.00 | M2K | $5 |
 | YM | $5 | 1.00 | $5.00 | MYM | $0.50 |
 
-### Metals (Session 17:00-16:00 CT, pause 60 min)
+### Metals COMEX/NYMEX (Globex 17:00-16:00 CT, RTH variable par produit)
 
-| Symbol | $/pt | Tick | Tick $ | Micro | Micro $/pt |
-|--------|------|------|--------|-------|------------|
-| GC | $100 | 0.10 | $10.00 | MGC | $10 |
-| SI | $5,000 | 0.005 | $25.00 | SIL | $1,000 |
-| HG | $25,000 | 0.0005 | $12.50 | -- | -- |
-| PL | $50 | 0.10 | $5.00 | -- | -- |
+RTH : GC 7:20-12:30, SI 7:25-12:25, HG 7:10-12:00, PL 7:20-12:05, PA 7:30-12:00.
+
+#### Standard
+| Symbol | Produit | Exchange | Contrat | $/pt | Tick | Tick $ | Mois |
+|--------|---------|----------|---------|------|------|--------|------|
+| GC | Gold | COMEX | 100 oz | $100 | $0.10/oz | $10.00 | G,J,M,Q,V,Z |
+| SI | Silver | COMEX | 5,000 oz | $5,000 | $0.005/oz | $25.00 | H,K,N,U,Z |
+| HG | Copper | COMEX | 25,000 lbs | $25,000 | $0.0005/lb | $12.50 | H,K,N,U,Z |
+| PL | Platinum | NYMEX | 50 oz | $50 | $0.10/oz | $5.00 | All months (primary F,J,N,V) |
+| PA | Palladium | NYMEX | 100 oz | $100 | $0.50/oz | $50.00 | H,M,U,Z |
+
+#### E-mini (cash settled)
+| Symbol | Contrat | Ratio | Tick | Tick $ |
+|--------|---------|-------|------|--------|
+| QO | 50 oz | 1/2 GC | $0.25/oz | $12.50 |
+| QI | 2,500 oz | 1/2 SI | $0.0125/oz | $31.25 |
+
+#### Micro
+| Symbol | Produit | Contrat | Ratio | Tick | Tick $ | Settlement |
+|--------|---------|---------|-------|------|--------|------------|
+| MGC | Micro Gold | 10 oz | 1/10 GC | $0.10/oz | $1.00 | Physical |
+| SIL | Micro Silver | 1,000 oz | 1/5 SI | $0.005/oz | $5.00 | Physical |
+| MHG | Micro Copper | 2,500 lbs | 1/10 HG | $0.0005/lb | $1.25 | Cash settled |
+| PLM | Micro Platinum | 10 oz | 1/5 PL | $0.10/oz | $1.00 | Cash settled |
+| PAM | Micro Palladium | 10 oz | 1/10 PA | $0.50/oz | $5.00 | Physical |
+
+Note : SIL et PLM sont 1/5 du standard (pas 1/10). Barchart symbols: PLM=YL, PAM=GP.
+Toutes specs vérifiées sur Barchart profiles + Ironbeam + QuantVPS + Lincoln Park Financial.
+Symboles métaux Rithmic : GC, SI, HG, PL, PA (std) | QO, QI (e-mini) | MGC, SIL, MHG, PLM, PAM (micro).
 
 ### Energy NYMEX (Globex 17:00-16:00 CT, RTH 8:00-13:30 CT)
 
@@ -635,8 +658,11 @@ Session wraps midnight -> OR logic: `t >= 17:30 OR t < 15:30`. 264 bars/day = 22
 |---------|----------|-------------|--------|
 | NQ, ES, YM, RTY | 8:30 - 15:00 | 17:00 - 16:00 | NYSE/NASDAQ cash |
 | CL, HO, RB, NG | 8:00 - 13:30 | 17:00 - 16:00 | Ancien pit NYMEX |
-| GC (Gold) | 7:20 - 12:30 | 17:00 - 16:00 | COMEX (vérifié Barchart) |
-| SI (Silver) | 7:25 - 12:25 | 17:00 - 16:00 | COMEX (vérifié Barchart) |
+| GC (Gold) | 7:20 - 12:30 | 17:00 - 16:00 | COMEX |
+| SI (Silver) | 7:25 - 12:25 | 17:00 - 16:00 | COMEX |
+| HG (Copper) | 7:10 - 12:00 | 17:00 - 16:00 | COMEX |
+| PL (Platinum) | 7:20 - 12:05 | 17:00 - 16:00 | NYMEX |
+| PA (Palladium) | 7:30 - 12:00 | 17:00 - 16:00 | NYMEX |
 | ZW, ZC, ZS, ZL, ZM | 8:30 - 13:20 | 19:00-7:45 + 8:30-13:20 (SPLIT) | Ancien pit CBOT |
 
 Vérifié via Barchart (données CME/NYMEX). Pour charts cash Sierra, utiliser les horaires RTH.
@@ -751,6 +777,113 @@ Shades chart background for a time range. Semi-transparent, doesn't obscure cand
 - Cash session chart: create separate chart with Session Start=08:30, Session End=15:30 (or 16:00)
 - Cross-chart refs (Text Display, Study/Price Overlay, ACSIL) require charts in **same chartbook** and **open** (hidden = OK, closed = broken)
 - **Draw Style "Text"** = shows value label only, no line/dash on chart
+- **Data corruption** : si chart affiche données aberrantes, `Edit > Delete All Data and Download` résout 90% des cas. Sinon ouvrir un nouveau chart frais.
+
+### Continuous Futures Contract (Réglages & Recommandations SC Engineering)
+
+#### Options disponibles dans le dropdown
+| Option | Back Adj | Rollover |
+|--------|----------|----------|
+| None | - | - |
+| Date Rule Rollover | Non | Date fixe |
+| Volume Based Rollover | Non | Volume |
+| Date Rule Rollover, Back Adjusted | Oui | Date fixe |
+| Volume Based Rollover, Back Adjusted | Oui | Volume |
+| Rollover Each Year, Same Month | - | Annuel |
+| Forward Curve | - | Multi-mois |
+
+#### Position SC Engineering (Support Board)
+- **Thread #77164** : *"We do not recommend using the Back Adjusted option."* Position officielle claire.
+- **Thread #68299** : Valeurs back-adjustment instables (changent jour en jour après rollover, ex: -43 → -29). Corrompt chart drawings.
+- **Thread #64384** : *"Don't expect any data provider to keep historical data for contract months that are not widely traded at all."* Mois illiquides (ex: V/October sur GC/SI) = pas de data Denali.
+- **Thread #84455** : Gaps sur continuous → fix : Intraday Data Storage Time Unit = **1 Minute**.
+- **Thread #90754** : Gaps après rollover → fix : mettre à jour Sierra Chart à la dernière version.
+- **Thread #91218** : Traders pro n'utilisent PAS continuous. Roll manuel + exclusion semaine de rollover.
+
+#### Comportement par produit (testé empiriquement)
+
+| Actif | Volume Based Rollover (non-back adj) | Gap au rollover |
+|-------|--------------------------------------|-----------------|
+| **GC** | Fonctionne — très liquide (~300-400k/j) | ~40 pts (petit, acceptable) |
+| **SI** | **Gaps importants** — moins liquide (~50-80k/j), contango marqué | Steps/artefacts sévères |
+| **HG** | Probablement OK (liquide comme GC) | À vérifier |
+| **PL** | Probablement gaps (thin) | À vérifier |
+| **PA** | Probablement gaps (thin) | À vérifier |
+
+**Observation empirique SI** : le gap commence le **mercredi 17:00 CT** (ouverture Globex) avant le FND. Seuls **2-3 jours** avant le FND sont affectés, pas la semaine entière.
+
+#### Config Sierra Chart (affichage, par produit)
+
+**Pour tous les métaux COMEX :**
+| Setting | Valeur |
+|---------|--------|
+| Continuous Contract | **Volume Based Rollover** (sans Back Adjusted) |
+| Automatically Rollover Futures Symbol | **Yes** |
+| Dates to Exclude | **Aucun** (même pour SI — voir Rollover Gate ci-dessous) |
+
+**Pourquoi pas de Date Exclude pour les spreads :**
+GC et SI ont des **calendriers de rollover décalés** :
+- GC : GJMQZ (fév, avr, jun, aoû, déc)
+- SI : HKNUZ (mar, mai, jul, sep, déc)
+- Seul **décembre** coïncide
+
+Si on exclut 3 jours sur SI mais pas GC, le beta rolling OLS est calculé sur des données asymétriques (manque de barres sur un leg). Le Date Exclude **casse les calculs de spread**. Le petit gap visuel sur le chart est acceptable — c'est le **rollover gate** qui protège les signaux.
+
+#### Rollover Gate pour Spread Trading (SOLUTION VALIDÉE)
+
+**Principe** : même pattern que les binary gates (ADF, Hurst, Corr). Ne PAS supprimer de data — bloquer les **entrées** pendant les périodes de roll de l'un OU l'autre leg. Les sorties ne sont JAMAIS bloquées.
+
+**Pourquoi c'est la bonne approche :**
+1. Données intactes → OLS beta, z-score, rolling averages restent corrects
+2. L'artefact de roll (2-3 barres) est dilué dans la fenêtre OLS (7000 barres = 0.04% d'impact)
+3. Pattern identique aux gates existantes → facile à implémenter
+4. Pas de problème d'asymétrie entre legs
+
+**Impact sur 1 an (GC/SI spread) :**
+```
+GC rolls: G→J(jan), J→M(mar), M→Q(mai), Q→Z(jul), Z→G(nov) = 5 rolls
+SI rolls: Z→H(fév), H→K(fév), K→N(avr), N→U(jun), U→Z(aoû) = 5 rolls
+Chevauchement: Z (dec) seulement
+Total: ~9 périodes de blocage distinctes × 2-3 jours = ~20-27 jours bloqués/an
+Coût: ~5-10 trades perdus/an, zéro artefact dans les calculs
+```
+
+**Implémentation Python (backtest) :**
+```python
+# rollover_gate = not (is_roll_period(leg_a) or is_roll_period(leg_b))
+# Bloque entrées, jamais sorties (même logique que apply_gate_filter_numba)
+```
+
+**Implémentation C++ (Sierra, Phase 2) :**
+```cpp
+// sc.ContractRolloverDate disponible en ACSIL
+// Supprimer auto-entry pendant rollover, permettre manual BUY/SELL/FLATTEN
+// Permettre auto-exits normalement
+```
+
+**Note NQ/YM et NQ/RTY** : les indices equity (NQ, ES, RTY, YM) partagent le MÊME cycle trimestriel (H, M, U, Z) et rollent la même semaine (3ème vendredi de mars/jun/sep/déc). Le problème d'asynchronisme n'existe quasi pas. Pour les cross-sector (NQ vs GC, ES vs CL), le décalage est majeur → rollover gate indispensable.
+
+#### Config Global Symbol Settings pour les mois liquides
+Indispensable pour continuous contract. Évite de charger des mois sans data.
+- **SI** : Contract Months = `HKNUZ` (Mar, Mai, Jul, Sep, Dec)
+- **GC** : Contract Months = `GJMQZ` (Fév, Avr, Jun, Aoû, Déc)
+- **HG** : Contract Months = `HKNUZ`
+- **PL** : Contract Months = `FJNV` (Jan, Avr, Jul, Oct -- primary months)
+- **PA** : Contract Months = `HMUZ`
+
+#### Date Exclude : usage chart solo uniquement
+Le Date Exclude reste utile pour un **chart individuel** (pas un spread) :
+- Format : `YYYY-MM-DD` séparés par virgules
+- Emplacement : **Global Symbol Settings** (supporte copier/coller) OU **Chart Settings > Chart Data**
+- Ajouter 2-3 jours avant le FND pour nettoyer le chart solo
+- **Ne PAS utiliser pour des paires/spreads** (asymétrie entre legs)
+
+#### Réglages complémentaires
+- **Global Settings > Data/Trade Service > Common Settings** : `Download Total Volume for All Contracts for Futures Daily Data` = **No** (requis pour continuous)
+- **Chart > Show Rollover Dates** : activer pour visualiser les transitions
+- **Intraday Data Storage Time Unit = 1 Minute** (évite certains gaps, thread #84455)
+- `Edit > Delete All Data and Download` → Select All pour re-télécharger toute la chaîne si problème
+- **ACSIL** : `sc.AddDateToExclude()` existe mais bug connu (thread #94759, composante time). `sc.ContractRolloverDate` fonctionne pour détecter les rolls.
 
 ---
 
