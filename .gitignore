@@ -29,6 +29,7 @@ pyrightconfig.json
 # Sierra templates/examples/docs (exclude all except our indicators)
 sierra/*.cpp
 !sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp
+!sierra/UniversalSpreadIndicator.cpp
 sierra/*.md
 
 # Temp

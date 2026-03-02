@@ -26,6 +26,32 @@
 - **Tested in replay** : auto-entry + auto-exit validated. Manual buttons validated on Teton Sim1
 - **Code review fixes (v2.1)** : buttons re-enabled on full recalc, float guards fabs()<1e-12, EntryTotalPnL removed
 
+### Universal Spread Indicator VALIDATED (Mars 2026)
+- **File**: `sierra/UniversalSpreadIndicator.cpp` (~950 lines, 2 studies in 1 DLL)
+- **Purpose**: Visual-only spread analysis for ANY futures pair. No trading, no Kalman, no state machine.
+- **Study 1** (`scsf_UniversalSpreadIndicator`): Z-Score + ZeroLine + Textbox → Region 1
+- **Study 2** (`scsf_UniversalSpreadLine`): Reads Spread from Study 1 via `GetStudyArrayUsingID()` → Region 2
+- **20 Inputs**: ChartB, PointValues, TickSizes, MicroRatios, SymbolNames, OLS/ZScore/Corr/ADF/Hurst/HL periods, ShowTextBox, FontSize, **SwapRegression**
+- **Defaults**: GC/SI (PV 100/5000, Tick 0.10/0.005, MicroRatio 10/5, Swap ON)
+- **Swap Regression Input**: ON = Y=LogB,X=LogA (for GC/SI: log_SI = α+β*log_GC, β>1). OFF = Y=LogA,X=LogB (for NQ/YM: log_NQ = α+β*log_YM)
+- **Spread formula**: `LogY - alpha - beta * LogX` (OLS residual centré sur 0)
+- **Sizing micro**: exact float values (user rounds manually). Ex: "3.42 MGC / 1.00 SIL"
+- **Scoring**: 40% ADF + 30% Corr + 30% HL (Hurst displayed but out of score)
+- **Beta validated identical** to GC_SI reference on same chart data
+- **Compilation**: `F:\SierreChart_Spread_Indices\ACS_Source\` → `/tmp/compile_universal.bat`
+
+#### Universal Indicator Gotchas
+1. **Early return MUST set all subgraphs to 0.0f** — garbage values corrupt Y-axis scale (-2^32)
+2. **Z-score clamp to ±10** — prevents extreme values from blowing up scale
+3. **DrawZeros=0 on internal subgraphs** — hides warmup zeros
+4. **One ACSIL study = one GraphRegion** — cannot split subgraphs across regions via code
+5. **Study Subgraph Reference in Region 1 inherits Main Price Graph scale** — unusable for custom data. Fix: use companion ACSIL study instead
+6. **Two-study-one-DLL pattern**: multiple SCSFExport in same .cpp, companion reads via `sc.GetStudyArrayUsingID()`
+7. **OLS/Corr/ADF functions must exclude 0.0f values** (`arrX[i] != 0.0f && arrY[i] != 0.0f`) — warmup zeros pollute regression
+8. **Regression direction affects sizing**: β=0.14 (GC on SI) vs β=4.5 (SI on GC) → completely different hedge ratios
+9. **Different Sierra instances = different data** even with same symbol/settings → beta will differ. Always compare on same chart.
+10. **DLL locked by Sierra** — must close Sierra completely before recompiling externally
+
 ### Phase 2 TODO
 1. Daily regime indicator (detect 2023-type correlation breakdown)
 2. NQ_RTY indicator (same architecture, different configs)
@@ -777,6 +803,19 @@ Shades chart background for a time range. Semi-transparent, doesn't obscure cand
 - Cash session chart: create separate chart with Session Start=08:30, Session End=15:30 (or 16:00)
 - Cross-chart refs (Text Display, Study/Price Overlay, ACSIL) require charts in **same chartbook** and **open** (hidden = OK, closed = broken)
 - **Draw Style "Text"** = shows value label only, no line/dash on chart
+
+### Alert Condition Formula (Study Alerts)
+- **Syntaxe** : fonctions spreadsheet-style, PAS d'opérateurs infixe
+- Commence par `=`
+- `OR()` et `AND()` sont des **fonctions** avec virgules : `=OR(cond1, cond2)`
+- `OR` / `AND` seul en texte ne marche PAS, `||` / `&&` non plus
+- Référence subgraph : `SG1`, `SG2`, etc. Pour un autre study : `ID#.SG#` (ex: `ID2.SG1`)
+- Comparateurs : `=`, `<>`, `<`, `<=`, `>`, `>=`
+- Valeurs négatives supportées directement (ex: `-2.5`)
+- Fonctions utiles : `CROSSOVER(SG1, value)`, `CROSSUNDER(SG1, value)`
+- **Exemple z-score ±2.5** : `=OR(SG1 >= 2.5, SG1 <= -2.5)`
+- Settings recommandés : Enabled ✓, Alert Only Once per Bar ✓
+- Source : sierrachart.com/index.php?page=doc/StudyChartAlertsAndScanning.php
 - **Data corruption** : si chart affiche données aberrantes, `Edit > Delete All Data and Download` résout 90% des cas. Sinon ouvrir un nouveau chart frais.
 
 ### Continuous Futures Contract (Réglages & Recommandations SC Engineering)
