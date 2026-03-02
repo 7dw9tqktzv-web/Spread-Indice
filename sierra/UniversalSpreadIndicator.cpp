@@ -488,6 +488,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCSubgraphRef LogA      = sc.Subgraph[3];
     SCSubgraphRef LogB      = sc.Subgraph[4];
     SCSubgraphRef SpreadSMA = sc.Subgraph[5];
+    SCSubgraphRef ZUpperLine = sc.Subgraph[6];
+    SCSubgraphRef ZLowerLine = sc.Subgraph[7];
 
     // ========================================================================
     // INPUTS
@@ -551,6 +553,18 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
         SpreadSMA.Name = "SpreadSMA (internal)";
         SpreadSMA.DrawStyle = DRAWSTYLE_IGNORE;
+
+        ZUpperLine.Name = "+2.5";
+        ZUpperLine.DrawStyle = DRAWSTYLE_DASH;
+        ZUpperLine.PrimaryColor = RGB(255, 80, 80);
+        ZUpperLine.LineWidth = 1;
+        ZUpperLine.DrawZeros = 0;
+
+        ZLowerLine.Name = "-2.5";
+        ZLowerLine.DrawStyle = DRAWSTYLE_DASH;
+        ZLowerLine.PrimaryColor = RGB(255, 80, 80);
+        ZLowerLine.LineWidth = 1;
+        ZLowerLine.DrawZeros = 0;
         SpreadSMA.DrawZeros = 0;
 
         // --- Inputs ---
@@ -664,6 +678,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         Spread[sc.Index]    = 0.0f;
         ZScore[sc.Index]    = 0.0f;
         ZeroLine[sc.Index]  = 0.0f;
+        ZUpperLine[sc.Index] = 0.0f;
+        ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
         return;
     }
@@ -674,6 +690,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         Spread[sc.Index]    = 0.0f;
         ZScore[sc.Index]    = 0.0f;
         ZeroLine[sc.Index]  = 0.0f;
+        ZUpperLine[sc.Index] = 0.0f;
+        ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
         return;
     }
@@ -686,6 +704,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         Spread[sc.Index]    = 0.0f;
         ZScore[sc.Index]    = 0.0f;
         ZeroLine[sc.Index]  = 0.0f;
+        ZUpperLine[sc.Index] = 0.0f;
+        ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
         return;
     }
@@ -696,8 +716,10 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     LogA[sc.Index] = (float)log((double)PriceA);
     LogB[sc.Index] = (float)log((double)PriceB);
 
-    // Zero line (toujours)
-    ZeroLine[sc.Index] = 0.0f;
+    // Horizontal lines (toujours)
+    ZeroLine[sc.Index]  = 0.0f;
+    ZUpperLine[sc.Index] = 2.5f;
+    ZLowerLine[sc.Index] = -2.5f;
 
     // ========================================================================
     // WARMUP : pas assez de barres pour OLS
@@ -931,11 +953,16 @@ SCSFExport scsf_UniversalSpreadLine(SCStudyInterfaceRef sc)
     // SUBGRAPHS
     // ========================================================================
     SCSubgraphRef SpreadLine = sc.Subgraph[0];
+    SCSubgraphRef BollMid    = sc.Subgraph[1];
+    SCSubgraphRef BollUpper  = sc.Subgraph[2];
+    SCSubgraphRef BollLower  = sc.Subgraph[3];
 
     // ========================================================================
     // INPUTS
     // ========================================================================
-    SCInputRef InStudyRef = sc.Input[0];
+    SCInputRef InStudyRef  = sc.Input[0];
+    SCInputRef InBollPeriod = sc.Input[1];
+    SCInputRef InBollMult   = sc.Input[2];
 
     // ========================================================================
     // DEFAULTS
@@ -943,7 +970,7 @@ SCSFExport scsf_UniversalSpreadLine(SCStudyInterfaceRef sc)
     if (sc.SetDefaults)
     {
         sc.GraphName = "Universal Spread Line";
-        sc.StudyDescription = "Companion: displays Spread from Universal Spread Indicator";
+        sc.StudyDescription = "Companion: Spread + Bollinger Bands from Universal Spread Indicator";
         sc.AutoLoop = 1;
         sc.GraphRegion = 2;
         sc.CalculationPrecedence = LOW_PREC_LEVEL;
@@ -954,8 +981,34 @@ SCSFExport scsf_UniversalSpreadLine(SCStudyInterfaceRef sc)
         SpreadLine.LineWidth = 2;
         SpreadLine.DrawZeros = 0;
 
+        BollMid.Name = "BB Mid";
+        BollMid.DrawStyle = DRAWSTYLE_DASH;
+        BollMid.PrimaryColor = RGB(128, 128, 128);
+        BollMid.LineWidth = 1;
+        BollMid.DrawZeros = 0;
+
+        BollUpper.Name = "BB Upper";
+        BollUpper.DrawStyle = DRAWSTYLE_DASH;
+        BollUpper.PrimaryColor = RGB(255, 80, 80);
+        BollUpper.LineWidth = 1;
+        BollUpper.DrawZeros = 0;
+
+        BollLower.Name = "BB Lower";
+        BollLower.DrawStyle = DRAWSTYLE_DASH;
+        BollLower.PrimaryColor = RGB(255, 80, 80);
+        BollLower.LineWidth = 1;
+        BollLower.DrawZeros = 0;
+
         InStudyRef.Name = "Study Reference (Universal Spread)";
-        InStudyRef.SetStudySubgraphValues(0, 0);  // Study ID 0 (user picks), Subgraph 0 = Spread
+        InStudyRef.SetStudySubgraphValues(0, 0);  // Subgraph 0 = Spread
+
+        InBollPeriod.Name = "Bollinger Period";
+        InBollPeriod.SetInt(30);
+        InBollPeriod.SetIntLimits(5, 500);
+
+        InBollMult.Name = "Bollinger Multiplier";
+        InBollMult.SetFloat(2.5f);
+        InBollMult.SetFloatLimits(0.5f, 5.0f);
 
         return;
     }
@@ -969,8 +1022,67 @@ SCSFExport scsf_UniversalSpreadLine(SCStudyInterfaceRef sc)
     if (SourceSpread.GetArraySize() == 0)
     {
         SpreadLine[sc.Index] = 0.0f;
+        BollMid[sc.Index]    = 0.0f;
+        BollUpper[sc.Index]  = 0.0f;
+        BollLower[sc.Index]  = 0.0f;
         return;
     }
 
-    SpreadLine[sc.Index] = SourceSpread[sc.Index];
+    float spread = SourceSpread[sc.Index];
+    SpreadLine[sc.Index] = spread;
+
+    // ========================================================================
+    // BOLLINGER BANDS
+    // ========================================================================
+    int period = InBollPeriod.GetInt();
+    float mult = InBollMult.GetFloat();
+
+    if (sc.Index < period - 1)
+    {
+        BollMid[sc.Index]   = 0.0f;
+        BollUpper[sc.Index] = 0.0f;
+        BollLower[sc.Index] = 0.0f;
+        return;
+    }
+
+    // SMA of spread
+    double sum = 0.0;
+    int count = 0;
+    int startIdx = sc.Index - period + 1;
+    for (int i = startIdx; i <= sc.Index; i++)
+    {
+        if (i >= 0 && SourceSpread[i] != 0.0f)
+        {
+            sum += SourceSpread[i];
+            count++;
+        }
+    }
+
+    if (count < 2)
+    {
+        BollMid[sc.Index]   = 0.0f;
+        BollUpper[sc.Index] = 0.0f;
+        BollLower[sc.Index] = 0.0f;
+        return;
+    }
+
+    double mean = sum / count;
+
+    // StdDev
+    double sumSq = 0.0;
+    for (int i = startIdx; i <= sc.Index; i++)
+    {
+        if (i >= 0 && SourceSpread[i] != 0.0f)
+        {
+            double diff = SourceSpread[i] - mean;
+            sumSq += diff * diff;
+        }
+    }
+
+    double std = sqrt(sumSq / (count - 1));
+
+    float mid = (float)mean;
+    BollMid[sc.Index]   = mid;
+    BollUpper[sc.Index] = mid + mult * (float)std;
+    BollLower[sc.Index] = mid - mult * (float)std;
 }
