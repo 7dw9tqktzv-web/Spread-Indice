@@ -944,8 +944,33 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         }
 
         // ================================================================
+        // SIZING INVERSE (normalise sur l'autre leg)
+        // ================================================================
+        float inv_a_std, inv_b_std;
+        float inv_micro_a, inv_micro_b;
+
+        if (SwapRegress)
+        {
+            // Current: B=1, A=calc → Inverse: A=1, B=?
+            inv_a_std = 1.0f;
+            inv_b_std = (N_a_std > 0.0f) ? N_b_std / N_a_std : 0.0f;
+            inv_micro_a = 1.0f;
+            inv_micro_b = (micro_a_exact > 0.0f) ? micro_b_exact / micro_a_exact : 0.0f;
+        }
+        else
+        {
+            // Current: A=1, B=calc → Inverse: B=1, A=?
+            inv_b_std = 1.0f;
+            inv_a_std = (N_b_std > 0.0f) ? N_a_std / N_b_std : 0.0f;
+            inv_micro_b = 1.0f;
+            inv_micro_a = (micro_b_exact > 0.0f) ? micro_a_exact / micro_b_exact : 0.0f;
+        }
+
+        // ================================================================
         // CONSTRUCTION DU TEXTE
         // ================================================================
+        bool hasMicro = (MicroRatioA > 1 && MicroRatioB > 1);
+
         SCString InfoText;
         InfoText.Format(
             "%s / %s  |  B %.3f  |  OLS %d\n"
@@ -956,15 +981,28 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             "SIGNAL: %.0f %s\n"
             "-------------------------------------\n"
             "STD:  %.2f %s  /  %.2f %s\n"
-            "MICRO: %.2f %s / %.2f %s",
+            "INV:  %.2f %s  /  %.2f %s",
             symA.GetChars(), symB.GetChars(), beta, OLSLookback,
             adfStat, adfLabel.GetChars(), hurst, hurstLabel.GetChars(),
             correlation, corrLabel.GetChars(),
             halfLife, hlTimeStr.GetChars(), hlLabel.GetChars(),
             score, scoreLabel.GetChars(),
             N_a_std, symA.GetChars(), N_b_std, symB.GetChars(),
-            micro_a_exact, microA.GetChars(), micro_b_exact, microB.GetChars()
+            inv_a_std, symA.GetChars(), inv_b_std, symB.GetChars()
         );
+
+        // Lignes micro uniquement si les deux micros existent
+        if (hasMicro)
+        {
+            SCString microLines;
+            microLines.Format(
+                "\nMICRO: %.2f %s / %.2f %s\n"
+                "M.INV: %.2f %s / %.2f %s",
+                micro_a_exact, microA.GetChars(), micro_b_exact, microB.GetChars(),
+                inv_micro_a, microA.GetChars(), inv_micro_b, microB.GetChars()
+            );
+            InfoText += microLines;
+        }
 
         // Couleur de fond dynamique selon score
         COLORREF bgColor;
