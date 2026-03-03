@@ -490,6 +490,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCSubgraphRef SpreadSMA = sc.Subgraph[5];
     SCSubgraphRef ZUpperLine = sc.Subgraph[6];
     SCSubgraphRef ZLowerLine = sc.Subgraph[7];
+    SCSubgraphRef SubADF     = sc.Subgraph[8];
+    SCSubgraphRef SubHurst   = sc.Subgraph[9];
+    SCSubgraphRef SubCorr    = sc.Subgraph[10];
+    SCSubgraphRef SubHL      = sc.Subgraph[11];
+    SCSubgraphRef SubScore   = sc.Subgraph[12];
 
     // ========================================================================
     // INPUTS
@@ -514,6 +519,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCInputRef InShowTextBox  = sc.Input[17];
     SCInputRef InFontSize     = sc.Input[18];
     SCInputRef InSwapRegress  = sc.Input[19];
+    SCInputRef InZUpperThresh = sc.Input[20];
+    SCInputRef InZLowerThresh = sc.Input[21];
 
     // ========================================================================
     // DEFAULTS
@@ -554,18 +561,39 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         SpreadSMA.Name = "SpreadSMA (internal)";
         SpreadSMA.DrawStyle = DRAWSTYLE_IGNORE;
 
-        ZUpperLine.Name = "+2.5";
+        ZUpperLine.Name = "Z Upper";
         ZUpperLine.DrawStyle = DRAWSTYLE_DASH;
         ZUpperLine.PrimaryColor = RGB(255, 80, 80);
         ZUpperLine.LineWidth = 1;
         ZUpperLine.DrawZeros = 0;
 
-        ZLowerLine.Name = "-2.5";
+        ZLowerLine.Name = "Z Lower";
         ZLowerLine.DrawStyle = DRAWSTYLE_DASH;
         ZLowerLine.PrimaryColor = RGB(255, 80, 80);
         ZLowerLine.LineWidth = 1;
         ZLowerLine.DrawZeros = 0;
         SpreadSMA.DrawZeros = 0;
+
+        // --- Metric subgraphs (hidden, for Alert Conditions + Spreadsheet) ---
+        SubADF.Name = "ADF Stat";
+        SubADF.DrawStyle = DRAWSTYLE_HIDDEN;
+        SubADF.DrawZeros = 0;
+
+        SubHurst.Name = "Hurst";
+        SubHurst.DrawStyle = DRAWSTYLE_HIDDEN;
+        SubHurst.DrawZeros = 0;
+
+        SubCorr.Name = "Correlation";
+        SubCorr.DrawStyle = DRAWSTYLE_HIDDEN;
+        SubCorr.DrawZeros = 0;
+
+        SubHL.Name = "Half-Life";
+        SubHL.DrawStyle = DRAWSTYLE_HIDDEN;
+        SubHL.DrawZeros = 0;
+
+        SubScore.Name = "Score";
+        SubScore.DrawStyle = DRAWSTYLE_HIDDEN;
+        SubScore.DrawZeros = 0;
 
         // --- Inputs ---
         InChartB.Name = "Chart Number B (Secondary)";
@@ -610,27 +638,27 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
         InOLSLookback.Name = "OLS Lookback (bars)";
         InOLSLookback.SetInt(3300);
-        InOLSLookback.SetIntLimits(100, 20000);
+        InOLSLookback.SetIntLimits(10, 200000);
 
         InZScorePeriod.Name = "Z-Score Period";
         InZScorePeriod.SetInt(30);
-        InZScorePeriod.SetIntLimits(5, 500);
+        InZScorePeriod.SetIntLimits(2, 50000);
 
         InCorrPeriod.Name = "Correlation Period";
         InCorrPeriod.SetInt(96);
-        InCorrPeriod.SetIntLimits(3, 500);
+        InCorrPeriod.SetIntLimits(2, 50000);
 
         InADFPeriod.Name = "ADF Period";
         InADFPeriod.SetInt(96);
-        InADFPeriod.SetIntLimits(5, 500);
+        InADFPeriod.SetIntLimits(2, 50000);
 
         InHurstPeriod.Name = "Hurst Period";
         InHurstPeriod.SetInt(64);
-        InHurstPeriod.SetIntLimits(8, 500);
+        InHurstPeriod.SetIntLimits(2, 50000);
 
         InHLPeriod.Name = "Half-Life Period";
         InHLPeriod.SetInt(96);
-        InHLPeriod.SetIntLimits(3, 500);
+        InHLPeriod.SetIntLimits(2, 50000);
 
         InShowTextBox.Name = "Show TextBox";
         InShowTextBox.SetYesNo(1);
@@ -641,6 +669,14 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
         InSwapRegress.Name = "Swap Regression (Y=B, for GC/SI)";
         InSwapRegress.SetYesNo(1);  // Default ON for GC/SI
+
+        InZUpperThresh.Name = "Z-Score Upper Line";
+        InZUpperThresh.SetFloat(2.5f);
+        InZUpperThresh.SetFloatLimits(-50.0f, 50.0f);
+
+        InZLowerThresh.Name = "Z-Score Lower Line";
+        InZLowerThresh.SetFloat(-2.5f);
+        InZLowerThresh.SetFloatLimits(-50.0f, 50.0f);
 
         return;
     }
@@ -662,6 +698,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     int ShowTextBox   = InShowTextBox.GetYesNo();
     int FontSize      = InFontSize.GetInt();
     int SwapRegress   = InSwapRegress.GetYesNo();
+    float ZUpperThresh = InZUpperThresh.GetFloat();
+    float ZLowerThresh = InZLowerThresh.GetFloat();
 
     // ========================================================================
     // ACCES DONNEES CHART B
@@ -681,6 +719,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         ZUpperLine[sc.Index] = 0.0f;
         ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
+        SubADF[sc.Index]    = 0.0f;
+        SubHurst[sc.Index]  = 0.0f;
+        SubCorr[sc.Index]   = 0.0f;
+        SubHL[sc.Index]     = 0.0f;
+        SubScore[sc.Index]  = 0.0f;
         return;
     }
 
@@ -693,6 +736,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         ZUpperLine[sc.Index] = 0.0f;
         ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
+        SubADF[sc.Index]    = 0.0f;
+        SubHurst[sc.Index]  = 0.0f;
+        SubCorr[sc.Index]   = 0.0f;
+        SubHL[sc.Index]     = 0.0f;
+        SubScore[sc.Index]  = 0.0f;
         return;
     }
 
@@ -707,6 +755,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         ZUpperLine[sc.Index] = 0.0f;
         ZLowerLine[sc.Index] = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
+        SubADF[sc.Index]    = 0.0f;
+        SubHurst[sc.Index]  = 0.0f;
+        SubCorr[sc.Index]   = 0.0f;
+        SubHL[sc.Index]     = 0.0f;
+        SubScore[sc.Index]  = 0.0f;
         return;
     }
 
@@ -718,17 +771,22 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
     // Horizontal lines (toujours)
     ZeroLine[sc.Index]  = 0.0f;
-    ZUpperLine[sc.Index] = 2.5f;
-    ZLowerLine[sc.Index] = -2.5f;
+    ZUpperLine[sc.Index] = ZUpperThresh;
+    ZLowerLine[sc.Index] = ZLowerThresh;
 
     // ========================================================================
     // WARMUP : pas assez de barres pour OLS
     // ========================================================================
     if (sc.Index < OLSLookback - 1)
     {
-        Spread[sc.Index] = 0.0f;
-        ZScore[sc.Index] = 0.0f;
+        Spread[sc.Index]    = 0.0f;
+        ZScore[sc.Index]    = 0.0f;
         SpreadSMA[sc.Index] = 0.0f;
+        SubADF[sc.Index]    = 0.0f;
+        SubHurst[sc.Index]  = 0.0f;
+        SubCorr[sc.Index]   = 0.0f;
+        SubHL[sc.Index]     = 0.0f;
+        SubScore[sc.Index]  = 0.0f;
         return;
     }
 
@@ -783,6 +841,13 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCString scoreLabel;
     COLORREF scoreColor;
     float score = CalculateScore(adfStat, correlation, halfLife, scoreLabel, scoreColor);
+
+    // Store metrics in subgraphs (for Alert Conditions)
+    SubADF[sc.Index]   = adfStat;
+    SubHurst[sc.Index] = hurst;
+    SubCorr[sc.Index]  = correlation;
+    SubHL[sc.Index]    = halfLife;
+    SubScore[sc.Index] = score;
 
     // ========================================================================
     // COULEUR DYNAMIQUE Z-SCORE
@@ -842,17 +907,16 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         float microPVB = PointValueB / (float)MicroRatioB;
         float absBeta = (float)fabs(beta);
 
-        int N_a_std, N_b_std;
+        float N_a_std, N_b_std;
         float micro_a_exact, micro_b_exact;
 
         if (SwapRegress)
         {
             // Spread = LogB - beta*LogA : fix B=1, calc A
-            N_b_std = 1;
-            N_a_std = 1;
+            N_b_std = 1.0f;
+            N_a_std = 1.0f;
             if (notionalA > 0.0f)
-                N_a_std = (int)(notionalB / notionalA * absBeta + 0.5f);
-            if (N_a_std < 1) N_a_std = 1;
+                N_a_std = notionalB / notionalA * absBeta;
 
             // Micro exact: for 1 micro B, how many micro A?
             float ratioPerMicroB = 0.0f;
@@ -865,11 +929,10 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         else
         {
             // Spread = LogA - beta*LogB : fix A=1, calc B
-            N_a_std = 1;
-            N_b_std = 1;
+            N_a_std = 1.0f;
+            N_b_std = 1.0f;
             if (notionalB > 0.0f)
-                N_b_std = (int)(notionalA / notionalB * absBeta + 0.5f);
-            if (N_b_std < 1) N_b_std = 1;
+                N_b_std = notionalA / notionalB * absBeta;
 
             // Micro exact: for 1 micro A, how many micro B?
             float ratioPerMicroA = 0.0f;
@@ -892,7 +955,7 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             "-------------------------------------\n"
             "SIGNAL: %.0f %s\n"
             "-------------------------------------\n"
-            "STD:  %d %s  /  %d %s\n"
+            "STD:  %.2f %s  /  %.2f %s\n"
             "MICRO: %.2f %s / %.2f %s",
             symA.GetChars(), symB.GetChars(), beta, OLSLookback,
             adfStat, adfLabel.GetChars(), hurst, hurstLabel.GetChars(),
@@ -1004,7 +1067,7 @@ SCSFExport scsf_UniversalSpreadLine(SCStudyInterfaceRef sc)
 
         InBollPeriod.Name = "Bollinger Period";
         InBollPeriod.SetInt(30);
-        InBollPeriod.SetIntLimits(5, 500);
+        InBollPeriod.SetIntLimits(2, 50000);
 
         InBollMult.Name = "Bollinger Multiplier";
         InBollMult.SetFloat(2.5f);
