@@ -26,6 +26,19 @@
 - **Tested in replay** : auto-entry + auto-exit validated. Manual buttons validated on Teton Sim1
 - **Code review fixes (v2.1)** : buttons re-enabled on full recalc, float guards fabs()<1e-12, EntryTotalPnL removed
 
+### KalmanFixedSpreadIndicator (Energy Pairs -- CL/NG, CL/HO, CL/RB)
+- **Fichier** : `sierra/KalmanFixedSpreadIndicator.cpp` (~1250 lignes)
+- **3 studies dans 1 DLL** (`KalmanFixedSpreadIndicator`) :
+  1. **Study 1 - Kalman Fixed Spread Indicator** (Region 1) : Z-Score sur ln(A/B) + textbox métriques/sizing
+  2. **Study 2 - Kalman Fixed Spread Line** (Region 2) : Spread Kalman + Bollinger Bands
+  3. **Study 3 - Kalman Fixed Dollar Spread** (Region 3) : Dollar spread pondéré par lots (std+micro)
+- **Z-Score** = rolling z-score sur `ln(A/B)` (log ratio), PAS sur le spread Kalman. Période=135 (2h15 en 1min)
+- **Spread Kalman** = `log(A) - alpha - beta*log(B)` avec alpha/beta fixes (dashboard externe). Utilisé pour métriques (ADF, Hurst, HL, Corr, Score)
+- **Dollar Spread** : `(StdLots*PV + MicroLots*PV/MicroRatio) * Prix` pour chaque leg. Delta depuis 1ère barre (PersistentFloat). Inputs int pour lots (pas de float dans Sierra inputs pour lots)
+- **Dashboard z-score formula** : `z = (ln(A/B) - SMA(ln(A/B), 135)) / StdDev(ln(A/B), 135)` -- cross-validé sur CL/NG, CL/HO, CL/RB
+- **Options en attente** : Option A (actuelle) z-score sur ln(A/B) vs Option B z-score sur spread Kalman. Plus de screenshots nécessaires pour trancher.
+- **Workflow** : éditer dans `sierra/`, copier vers `F:\SierreChart_Spread_Indices\ACS_Source\`, user compile depuis Sierra
+
 ### Phase 2 TODO
 1. Daily regime indicator (detect 2023-type correlation breakdown)
 2. NQ_RTY indicator (same architecture, different configs)
@@ -352,6 +365,21 @@ sc.AddMessageToLog(msg, 0);
 28. **Replay fast (960X)** : Sierra processes bars in batch. Signal detection must run on EVERY bar (not just last bar) else signal is missed. Guard `!sc.IsFullRecalculation` prevents historical signals.
 29. **Cooldown anti double-click** : `sc.CurrentSystemDateTime.GetAsDouble()` in PersistentDouble, diff * 86400.0 = seconds. FLATTEN always exempt.
 30. **Float equality guards** : never use `== 0.0` for computed doubles (OLS denominator, ADF ss_x). Use `fabs(x) < 1e-12`. Exact zero comparison may miss near-zero values from floating-point arithmetic.
+
+### Chart Settings vs Global Symbol Settings vs TAL (P&L)
+31. **Chart P/L et TAL P/L utilisent des sources DIFFÉRENTES** :
+    - Chart P/L → utilise `Currency Value Per Tick` du **Chart Settings** (onglet *Symbol)
+    - TAL P/L → utilise `Currency Value Per Tick` du **Global Settings > Symbol Settings**
+    - Les Chart Settings n'affectent JAMAIS le TAL et vice versa
+32. **Trade Only Symbol + micro contracts** : quand chart = CL et trade symbol = MCL :
+    - Le chart affiche les données CL (tick $0.01, $10/tick normalement)
+    - Le P/L chart est calculé avec les specs du **chart** (CL data), PAS du trade symbol
+    - Mettre `Currency Value Per Tick = 10` sur le chart (specs CL) pour afficher le bon P&L MCL
+    - Dans Global Symbol Settings, MCL doit avoir `Currency Value Per Tick = 1`
+    - **PIÈGE** : si un AUTRE chart CL a des Currency Value Per Tick différents → incohérence TAL
+    - **Solution** : tous les charts CL doivent avoir les MÊMES symbol settings
+33. **TAL Refresh** : après modification des Global Symbol Settings, le TAL ne se met PAS à jour automatiquement. Aller dans TAL → Edit → Refresh Log.
+34. **Global Symbol Settings peuvent revenir aux defaults** à la reconnexion au serveur de données. Revérifier périodiquement.
 
 ---
 

@@ -1108,3 +1108,155 @@ SCSFExport scsf_KalmanFixedSpreadLine(SCStudyInterfaceRef sc)
     BollUpper[sc.Index] = mid + mult * (float)std;
     BollLower[sc.Index] = mid - mult * (float)std;
 }
+
+// ============================================================================
+// COMPANION STUDY 2: Dollar Spread
+//
+// Displays the dollar-weighted spread: LotsA * PV_A * PriceA - LotsB * PV_B * PriceB
+// When the line goes UP   -> long A / short B profits
+// When the line goes DOWN -> short A / long B profits
+//
+// Usage:
+//   1. Apply on same chart as Kalman Fixed Spread Indicator (Region 3)
+//   2. Set Chart Number B, Lots, and Point Values for your sizing
+// ============================================================================
+SCSFExport scsf_KalmanFixedDollarSpread(SCStudyInterfaceRef sc)
+{
+    // ========================================================================
+    // SUBGRAPHS
+    // ========================================================================
+    SCSubgraphRef DollarSpread = sc.Subgraph[0];
+    SCSubgraphRef ZeroLine     = sc.Subgraph[1];
+
+    // ========================================================================
+    // INPUTS
+    // ========================================================================
+    SCInputRef InChartB       = sc.Input[0];
+    SCInputRef InStdLotsA     = sc.Input[1];
+    SCInputRef InStdLotsB     = sc.Input[2];
+    SCInputRef InMicroLotsA   = sc.Input[3];
+    SCInputRef InMicroLotsB   = sc.Input[4];
+    SCInputRef InPointValueA  = sc.Input[5];
+    SCInputRef InPointValueB  = sc.Input[6];
+    SCInputRef InMicroRatioA  = sc.Input[7];
+    SCInputRef InMicroRatioB  = sc.Input[8];
+
+    // ========================================================================
+    // DEFAULTS
+    // ========================================================================
+    if (sc.SetDefaults)
+    {
+        sc.GraphName = "Kalman Fixed Dollar Spread";
+        sc.StudyDescription = "Dollar-weighted spread: LotsA x PV_A x PriceA - LotsB x PV_B x PriceB";
+        sc.AutoLoop = 1;
+        sc.GraphRegion = 3;
+        sc.CalculationPrecedence = LOW_PREC_LEVEL;
+
+        DollarSpread.Name = "Dollar Spread";
+        DollarSpread.DrawStyle = DRAWSTYLE_LINE;
+        DollarSpread.PrimaryColor = RGB(0, 255, 128);
+        DollarSpread.LineWidth = 2;
+        DollarSpread.DrawZeros = 0;
+
+        ZeroLine.Name = "Zero";
+        ZeroLine.DrawStyle = DRAWSTYLE_LINE;
+        ZeroLine.PrimaryColor = RGB(128, 128, 128);
+        ZeroLine.LineWidth = 1;
+        ZeroLine.DrawZeros = 1;
+
+        InChartB.Name = "Chart Number B (Secondary)";
+        InChartB.SetInt(5);
+        InChartB.SetIntLimits(1, 100);
+
+        InStdLotsA.Name = "Std Lots A";
+        InStdLotsA.SetInt(1);
+        InStdLotsA.SetIntLimits(0, 100);
+
+        InStdLotsB.Name = "Std Lots B";
+        InStdLotsB.SetInt(0);
+        InStdLotsB.SetIntLimits(0, 100);
+
+        InMicroLotsA.Name = "Micro Lots A";
+        InMicroLotsA.SetInt(0);
+        InMicroLotsA.SetIntLimits(0, 100);
+
+        InMicroLotsB.Name = "Micro Lots B";
+        InMicroLotsB.SetInt(0);
+        InMicroLotsB.SetIntLimits(0, 100);
+
+        InPointValueA.Name = "Point Value A ($/pt)";
+        InPointValueA.SetFloat(1000.0f);
+        InPointValueA.SetFloatLimits(0.01f, 100000.0f);
+
+        InPointValueB.Name = "Point Value B ($/pt)";
+        InPointValueB.SetFloat(10000.0f);
+        InPointValueB.SetFloatLimits(0.01f, 100000.0f);
+
+        InMicroRatioA.Name = "Micro Ratio A (Std/Micro)";
+        InMicroRatioA.SetInt(10);
+        InMicroRatioA.SetIntLimits(1, 100);
+
+        InMicroRatioB.Name = "Micro Ratio B (Std/Micro)";
+        InMicroRatioB.SetInt(4);
+        InMicroRatioB.SetIntLimits(1, 100);
+
+        return;
+    }
+
+    // ========================================================================
+    // ACCES DONNEES
+    // ========================================================================
+    int ChartB = InChartB.GetInt();
+
+    SCGraphData ChartBData;
+    sc.GetChartBaseData(ChartB, ChartBData);
+
+    if (ChartBData[SC_LAST].GetArraySize() == 0)
+    {
+        DollarSpread[sc.Index] = 0.0f;
+        ZeroLine[sc.Index] = 0.0f;
+        return;
+    }
+
+    int idxB = sc.GetContainingIndexForDateTimeIndex(ChartB, sc.Index);
+    if (idxB < 0 || idxB >= ChartBData[SC_LAST].GetArraySize())
+    {
+        DollarSpread[sc.Index] = 0.0f;
+        ZeroLine[sc.Index] = 0.0f;
+        return;
+    }
+
+    float PriceA = sc.Close[sc.Index];
+    float PriceB = ChartBData[SC_LAST][idxB];
+
+    if (PriceA <= 0.0f || PriceB <= 0.0f)
+    {
+        DollarSpread[sc.Index] = 0.0f;
+        ZeroLine[sc.Index] = 0.0f;
+        return;
+    }
+
+    // ========================================================================
+    // DOLLAR SPREAD (delta from first bar, so line starts at 0)
+    // ========================================================================
+    int StdLotsA   = InStdLotsA.GetInt();
+    int StdLotsB   = InStdLotsB.GetInt();
+    int MicroLotsA = InMicroLotsA.GetInt();
+    int MicroLotsB = InMicroLotsB.GetInt();
+    float PVA      = InPointValueA.GetFloat();
+    float PVB      = InPointValueB.GetFloat();
+    int MicroRatA  = InMicroRatioA.GetInt();
+    int MicroRatB  = InMicroRatioB.GetInt();
+
+    float notionalA = (StdLotsA * PVA + MicroLotsA * PVA / MicroRatA) * PriceA;
+    float notionalB = (StdLotsB * PVB + MicroLotsB * PVB / MicroRatB) * PriceB;
+    float rawSpread = notionalA - notionalB;
+
+    // Store reference value (first valid bar) in PersistentFloat
+    float& RefValue = sc.GetPersistentFloat(0);
+    if (sc.Index == 0)
+        RefValue = rawSpread;
+
+    DollarSpread[sc.Index] = rawSpread - RefValue;
+    ZeroLine[sc.Index] = 0.0f;
+}
