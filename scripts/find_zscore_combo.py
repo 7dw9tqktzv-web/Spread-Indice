@@ -14,7 +14,7 @@ from pathlib import Path
 # ============================================================================
 ALPHA = 3.3379
 BETA = 0.9135
-TARGET_Z = 1.93
+TARGET_Z = -1.79
 TARGET_DATE = "2026-03-04"
 TARGET_TIME = "00:35:00"
 SESSION_START = "17:30"
@@ -27,7 +27,7 @@ ZSCORE_PERIODS = list(range(5, 201))  # 5 to 200
 # Data files
 RAW_DIR = Path("raw")
 FILE_A = RAW_DIR / "CLJ26_FUT_CME.scid_BarData.txt"
-FILE_B = RAW_DIR / "NGJ26_FUT_CME.scid_BarData.txt"
+FILE_B = RAW_DIR / "HOJ26_FUT_CME.scid_BarData.txt"
 
 
 # ============================================================================
@@ -111,12 +111,12 @@ def main():
     df_b = load_sierra_csv(FILE_B)
 
     print(f"CL: {len(df_a)} bars, {df_a.index[0]} -> {df_a.index[-1]}")
-    print(f"NG: {len(df_b)} bars, {df_b.index[0]} -> {df_b.index[-1]}")
+    print(f"HO: {len(df_b)} bars, {df_b.index[0]} -> {df_b.index[-1]}")
 
     # Filter session
     df_a = filter_session(df_a, SESSION_START, SESSION_END)
     df_b = filter_session(df_b, SESSION_START, SESSION_END)
-    print(f"After session filter: CL={len(df_a)}, NG={len(df_b)}")
+    print(f"After session filter: CL={len(df_a)}, HO={len(df_b)}")
 
     target_dt = pd.Timestamp(f"{TARGET_DATE} {TARGET_TIME}")
     print(f"\nTarget: z-score = {TARGET_Z} at {target_dt}")

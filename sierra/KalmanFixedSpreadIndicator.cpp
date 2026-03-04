@@ -14,7 +14,7 @@
 //   Visual-only: pas de trading, pas de Kalman interne, pas de state machine.
 //
 // Spread: log(Y) - alpha - beta * log(X)   (alpha/beta fixes)
-// Z-score: (spread - SMA) / StdDev         (rolling)
+// Z-score: (ln(A/B) - SMA) / StdDev        (rolling on log price ratio)
 //
 // Metriques:
 //   - ADF simplifie (Dickey-Fuller sans augmentation)
@@ -421,6 +421,8 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
     SCSubgraphRef SubCorr    = sc.Subgraph[10];
     SCSubgraphRef SubHL      = sc.Subgraph[11];
     SCSubgraphRef SubScore   = sc.Subgraph[12];
+    SCSubgraphRef LogRatio   = sc.Subgraph[13];
+    SCSubgraphRef LogRatSMA  = sc.Subgraph[14];
 
     // ========================================================================
     // INPUTS
@@ -522,6 +524,14 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
         SubScore.DrawStyle = DRAWSTYLE_HIDDEN;
         SubScore.DrawZeros = 0;
 
+        LogRatio.Name = "LogRatio (internal)";
+        LogRatio.DrawStyle = DRAWSTYLE_IGNORE;
+        LogRatio.DrawZeros = 0;
+
+        LogRatSMA.Name = "LogRatSMA (internal)";
+        LogRatSMA.DrawStyle = DRAWSTYLE_IGNORE;
+        LogRatSMA.DrawZeros = 0;
+
         // --- Inputs ---
         InChartB.Name = "Chart Number B (Secondary)";
         InChartB.SetInt(2);
@@ -572,7 +582,7 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
         InKalmanBeta.SetFloatLimits(-50.0f, 50.0f);
 
         InZScorePeriod.Name = "Z-Score Period";
-        InZScorePeriod.SetInt(30);
+        InZScorePeriod.SetInt(135);
         InZScorePeriod.SetIntLimits(2, 50000);
 
         InCorrPeriod.Name = "Correlation Period";
@@ -725,13 +735,24 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
     Spread[sc.Index] = spreadVal;
 
     // ========================================================================
-    // Z-SCORE
+    // LOG RATIO ln(A/B) pour z-score (independant du Kalman alpha/beta)
     // ========================================================================
-    sc.SimpleMovAvg(Spread, SpreadSMA, ZScorePeriod);
-    float stdDev = CalculateStdDev(Spread, sc.Index, ZScorePeriod);
+    float logRatioVal;
+    if (SwapRegress)
+        logRatioVal = LogB[sc.Index] - LogA[sc.Index];  // ln(B/A)
+    else
+        logRatioVal = LogA[sc.Index] - LogB[sc.Index];  // ln(A/B)
+
+    LogRatio[sc.Index] = logRatioVal;
+
+    // ========================================================================
+    // Z-SCORE (rolling on log ratio)
+    // ========================================================================
+    sc.SimpleMovAvg(LogRatio, LogRatSMA, ZScorePeriod);
+    float stdDev = CalculateStdDev(LogRatio, sc.Index, ZScorePeriod);
     float zScore = 0.0f;
     if (stdDev > 1e-10f)
-        zScore = (spreadVal - SpreadSMA[sc.Index]) / stdDev;
+        zScore = (logRatioVal - LogRatSMA[sc.Index]) / stdDev;
 
     if (zScore > 10.0f)  zScore = 10.0f;
     if (zScore < -10.0f) zScore = -10.0f;
