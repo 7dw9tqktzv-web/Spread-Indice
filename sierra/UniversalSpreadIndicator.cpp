@@ -497,6 +497,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCSubgraphRef SubCorr    = sc.Subgraph[10];
     SCSubgraphRef SubHL      = sc.Subgraph[11];
     SCSubgraphRef SubScore   = sc.Subgraph[12];
+    SCSubgraphRef LogRatio   = sc.Subgraph[13];   // ln(A) - ln(B)
+    SCSubgraphRef LogRatioSMA = sc.Subgraph[14];  // SMA of LogRatio (for z-score)
 
     // ========================================================================
     // INPUTS
@@ -533,6 +535,7 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     SCInputRef InDollarTP       = sc.Input[27];
     SCInputRef InDollarSL       = sc.Input[28];
     SCInputRef InEnableAutoExit = sc.Input[29];
+    SCInputRef InZScoreOnLogRatio = sc.Input[30];
 
     // ========================================================================
     // DEFAULTS
@@ -616,6 +619,14 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         SubScore.Name = "Score";
         SubScore.DrawStyle = DRAWSTYLE_HIDDEN;
         SubScore.DrawZeros = 0;
+
+        LogRatio.Name = "LogRatio (internal)";
+        LogRatio.DrawStyle = DRAWSTYLE_IGNORE;
+        LogRatio.DrawZeros = 0;
+
+        LogRatioSMA.Name = "LogRatioSMA (internal)";
+        LogRatioSMA.DrawStyle = DRAWSTYLE_IGNORE;
+        LogRatioSMA.DrawZeros = 0;
 
         // --- Inputs ---
         InChartB.Name = "Chart Number B (Secondary)";
@@ -729,6 +740,9 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         InEnableAutoExit.Name = "Enable Auto Exit (TP/SL)";
         InEnableAutoExit.SetYesNo(1);
 
+        InZScoreOnLogRatio.Name = "Z-Score on ln(A/B) instead of Beta-Weighted Spread";
+        InZScoreOnLogRatio.SetYesNo(0);  // Default: z-score on beta-weighted spread
+
         return;
     }
 
@@ -828,34 +842,38 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             sc.AddMessageToLog("UniversalSpread: Chart B data not available. Check Chart Number B input.", 1);
         // CRITICAL: set visible subgraphs to 0 before early return
         // (prevents garbage values from corrupting Y-axis scale)
-        Spread[sc.Index]    = 0.0f;
-        ZScore[sc.Index]    = 0.0f;
-        ZeroLine[sc.Index]  = 0.0f;
-        ZUpperLine[sc.Index] = 0.0f;
-        ZLowerLine[sc.Index] = 0.0f;
-        SpreadSMA[sc.Index] = 0.0f;
-        SubADF[sc.Index]    = 0.0f;
-        SubHurst[sc.Index]  = 0.0f;
-        SubCorr[sc.Index]   = 0.0f;
-        SubHL[sc.Index]     = 0.0f;
-        SubScore[sc.Index]  = 0.0f;
+        Spread[sc.Index]       = 0.0f;
+        ZScore[sc.Index]       = 0.0f;
+        ZeroLine[sc.Index]     = 0.0f;
+        ZUpperLine[sc.Index]   = 0.0f;
+        ZLowerLine[sc.Index]   = 0.0f;
+        SpreadSMA[sc.Index]    = 0.0f;
+        LogRatio[sc.Index]     = 0.0f;
+        LogRatioSMA[sc.Index]  = 0.0f;
+        SubADF[sc.Index]       = 0.0f;
+        SubHurst[sc.Index]     = 0.0f;
+        SubCorr[sc.Index]      = 0.0f;
+        SubHL[sc.Index]        = 0.0f;
+        SubScore[sc.Index]     = 0.0f;
         return;
     }
 
     int idxB = sc.GetContainingIndexForDateTimeIndex(ChartB, sc.Index);
     if (idxB < 0 || idxB >= ChartBData[SC_LAST].GetArraySize())
     {
-        Spread[sc.Index]    = 0.0f;
-        ZScore[sc.Index]    = 0.0f;
-        ZeroLine[sc.Index]  = 0.0f;
-        ZUpperLine[sc.Index] = 0.0f;
-        ZLowerLine[sc.Index] = 0.0f;
-        SpreadSMA[sc.Index] = 0.0f;
-        SubADF[sc.Index]    = 0.0f;
-        SubHurst[sc.Index]  = 0.0f;
-        SubCorr[sc.Index]   = 0.0f;
-        SubHL[sc.Index]     = 0.0f;
-        SubScore[sc.Index]  = 0.0f;
+        Spread[sc.Index]       = 0.0f;
+        ZScore[sc.Index]       = 0.0f;
+        ZeroLine[sc.Index]     = 0.0f;
+        ZUpperLine[sc.Index]   = 0.0f;
+        ZLowerLine[sc.Index]   = 0.0f;
+        SpreadSMA[sc.Index]    = 0.0f;
+        LogRatio[sc.Index]     = 0.0f;
+        LogRatioSMA[sc.Index]  = 0.0f;
+        SubADF[sc.Index]       = 0.0f;
+        SubHurst[sc.Index]     = 0.0f;
+        SubCorr[sc.Index]      = 0.0f;
+        SubHL[sc.Index]        = 0.0f;
+        SubScore[sc.Index]     = 0.0f;
         return;
     }
 
@@ -864,17 +882,19 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
     if (PriceA <= 0.0f || PriceB <= 0.0f)
     {
-        Spread[sc.Index]    = 0.0f;
-        ZScore[sc.Index]    = 0.0f;
-        ZeroLine[sc.Index]  = 0.0f;
-        ZUpperLine[sc.Index] = 0.0f;
-        ZLowerLine[sc.Index] = 0.0f;
-        SpreadSMA[sc.Index] = 0.0f;
-        SubADF[sc.Index]    = 0.0f;
-        SubHurst[sc.Index]  = 0.0f;
-        SubCorr[sc.Index]   = 0.0f;
-        SubHL[sc.Index]     = 0.0f;
-        SubScore[sc.Index]  = 0.0f;
+        Spread[sc.Index]       = 0.0f;
+        ZScore[sc.Index]       = 0.0f;
+        ZeroLine[sc.Index]     = 0.0f;
+        ZUpperLine[sc.Index]   = 0.0f;
+        ZLowerLine[sc.Index]   = 0.0f;
+        SpreadSMA[sc.Index]    = 0.0f;
+        LogRatio[sc.Index]     = 0.0f;
+        LogRatioSMA[sc.Index]  = 0.0f;
+        SubADF[sc.Index]       = 0.0f;
+        SubHurst[sc.Index]     = 0.0f;
+        SubCorr[sc.Index]      = 0.0f;
+        SubHL[sc.Index]        = 0.0f;
+        SubScore[sc.Index]     = 0.0f;
         return;
     }
 
@@ -894,14 +914,16 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     // ========================================================================
     if (sc.Index < OLSLookback - 1)
     {
-        Spread[sc.Index]    = 0.0f;
-        ZScore[sc.Index]    = 0.0f;
-        SpreadSMA[sc.Index] = 0.0f;
-        SubADF[sc.Index]    = 0.0f;
-        SubHurst[sc.Index]  = 0.0f;
-        SubCorr[sc.Index]   = 0.0f;
-        SubHL[sc.Index]     = 0.0f;
-        SubScore[sc.Index]  = 0.0f;
+        Spread[sc.Index]       = 0.0f;
+        ZScore[sc.Index]       = 0.0f;
+        SpreadSMA[sc.Index]    = 0.0f;
+        LogRatio[sc.Index]     = 0.0f;
+        LogRatioSMA[sc.Index]  = 0.0f;
+        SubADF[sc.Index]       = 0.0f;
+        SubHurst[sc.Index]     = 0.0f;
+        SubCorr[sc.Index]      = 0.0f;
+        SubHL[sc.Index]        = 0.0f;
+        SubScore[sc.Index]     = 0.0f;
         return;
     }
 
@@ -928,13 +950,33 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     Spread[sc.Index] = spreadVal;
 
     // ========================================================================
-    // Z-SCORE
+    // LOG RATIO (always computed for z-score toggle)
     // ========================================================================
-    sc.SimpleMovAvg(Spread, SpreadSMA, ZScorePeriod);
-    float stdDev = CalculateStdDev(Spread, sc.Index, ZScorePeriod);
+    float logRatioVal = LogA[sc.Index] - LogB[sc.Index];  // ln(A/B)
+    LogRatio[sc.Index] = logRatioVal;
+
+    // ========================================================================
+    // Z-SCORE (toggle: OLS Spread vs ln(A/B))
+    // ========================================================================
+    bool useLogRatio = (InZScoreOnLogRatio.GetYesNo() != 0);
     float zScore = 0.0f;
-    if (stdDev > 1e-10f)
-        zScore = (spreadVal - SpreadSMA[sc.Index]) / stdDev;
+
+    if (useLogRatio)
+    {
+        // Z-score on ln(A/B) -- assumes beta=1, alpha cancels in normalization
+        sc.SimpleMovAvg(LogRatio, LogRatioSMA, ZScorePeriod);
+        float stdDev = CalculateStdDev(LogRatio, sc.Index, ZScorePeriod);
+        if (stdDev > 1e-10f)
+            zScore = (logRatioVal - LogRatioSMA[sc.Index]) / stdDev;
+    }
+    else
+    {
+        // Z-score on OLS spread (logA - alpha - beta*logB) -- accounts for real beta
+        sc.SimpleMovAvg(Spread, SpreadSMA, ZScorePeriod);
+        float stdDev = CalculateStdDev(Spread, sc.Index, ZScorePeriod);
+        if (stdDev > 1e-10f)
+            zScore = (spreadVal - SpreadSMA[sc.Index]) / stdDev;
+    }
 
     // Clamp z-score to prevent extreme values from blowing up Y-axis scale
     if (zScore > 10.0f)  zScore = 10.0f;
@@ -1086,9 +1128,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         // ================================================================
         bool hasMicro = (MicroRatioA > 1 && MicroRatioB > 1);
 
+        const char* zMethod = (InZScoreOnLogRatio.GetYesNo() != 0) ? "ln" : "Beta";
+
         SCString InfoText;
         InfoText.Format(
-            "%s / %s  |  B %.3f  |  OLS %d\n"
+            "%s / %s  |  B %.3f  |  OLS %d  |  Z:%s\n"
             "-------------------------------------\n"
             "ADF: %.2f %s    Hurst: %.2f %s\n"
             "Corr: %.2f %s     HL: %.0f (%s) %s\n"
@@ -1097,7 +1141,7 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             "-------------------------------------\n"
             "STD:  %.2f %s  /  %.2f %s\n"
             "INV:  %.2f %s  /  %.2f %s",
-            symA.GetChars(), symB.GetChars(), beta, OLSLookback,
+            symA.GetChars(), symB.GetChars(), beta, OLSLookback, zMethod,
             adfStat, adfLabel.GetChars(), hurst, hurstLabel.GetChars(),
             correlation, corrLabel.GetChars(),
             halfLife, hlTimeStr.GetChars(), hlLabel.GetChars(),

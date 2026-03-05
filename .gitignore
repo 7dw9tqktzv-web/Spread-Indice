@@ -30,6 +30,7 @@ pyrightconfig.json
 sierra/*.cpp
 !sierra/NQ_YM_SpreadMeanReversion_v1.0.cpp
 !sierra/UniversalSpreadIndicator.cpp
+!sierra/KalmanFixedSpreadIndicator.cpp
 sierra/*.md
 
 # Temp

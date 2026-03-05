@@ -26,16 +26,19 @@
 - **Tested in replay** : auto-entry + auto-exit validated. Manual buttons validated on Teton Sim1
 - **Code review fixes (v2.1)** : buttons re-enabled on full recalc, float guards fabs()<1e-12, EntryTotalPnL removed
 
-### Universal Spread Indicator (Mars 2026)
-- **File**: `sierra/UniversalSpreadIndicator.cpp` (~1100 lines, 2 studies in 1 DLL)
-- **Purpose**: Visual-only spread analysis for ANY futures pair. No trading, no Kalman, no state machine.
+### Universal Spread Indicator + Trading (Mars 2026)
+- **File**: `sierra/UniversalSpreadIndicator.cpp` (~1700 lines, 2 studies in 1 DLL)
+- **Purpose**: Universal spread analysis + 1-click trading for ANY futures pair.
 - **Study 1** (`scsf_UniversalSpreadIndicator`): Z-Score + ZeroLine + Textbox + metric subgraphs → Region 1
 - **Study 2** (`scsf_UniversalSpreadLine`): Reads Spread from Study 1 via `GetStudyArrayUsingID()` → Region 2
-- **22 Inputs**: ChartB, PointValues, TickSizes, MicroRatios, SymbolNames, OLS/ZScore/Corr/ADF/Hurst/HL periods, ShowTextBox, FontSize, SwapRegression, **Z-Score Upper Line**, **Z-Score Lower Line**
-- **13 Subgraphs**: SG1=Spread(ignore), SG2=Z-Score(line), SG3=Zero(line), SG4=LogA(ignore), SG5=LogB(ignore), SG6=SpreadSMA(ignore), SG7=Z Upper(dash), SG8=Z Lower(dash), **SG9=ADF Stat(ignore)**, **SG10=Hurst(ignore)**, **SG11=Correlation(ignore)**, **SG12=Half-Life(ignore)**, **SG13=Score(ignore)**
+- **31 Inputs**: ChartB, PointValues, TickSizes, MicroRatios, SymbolNames, OLS/ZScore/Corr/ADF/Hurst/HL periods, ShowTextBox, FontSize, SwapRegression, Z-Score Upper/Lower Line, **EnableTrading(22), LegASymbol(23), LegBSymbol(24), QtyA(25), QtyB(26), DollarTP(27), DollarSL(28), EnableAutoExit(29), ZScoreOnLogRatio(30)**
+- **Trading**: BUY SP / SELL SP / FLAT SP via ACS_BUTTON_1/2/3. Dollar TP/SL auto-exits. 5s cooldown. SwapRegress-aware directions. Position sync via GetTradePositionForSymbolAndAccount()
+- **PersistentVars**: Int(0)=TradingPosition, Int(1)=PendingOrderAction, Int(2)=EntryBarIndex, Double(0)=LastOrderTime, Double(1)=EntrySpreadZ
+- **15 Subgraphs**: SG0=Spread(ignore), SG1=Z-Score(line), SG2=Zero(line), SG3=LogA(ignore), SG4=LogB(ignore), SG5=SpreadSMA(ignore), SG6=Z Upper(dash), SG7=Z Lower(dash), SG8=ADF Stat(ignore), SG9=Hurst(ignore), SG10=Correlation(ignore), SG11=Half-Life(ignore), SG12=Score(ignore), **SG13=LogRatio(ignore)**, **SG14=LogRatioSMA(ignore)**
 - **Defaults**: GC/SI (PV 100/5000, Tick 0.10/0.005, MicroRatio 10/5, Swap ON)
 - **Swap Regression Input**: ON = Y=LogB,X=LogA (for GC/SI). OFF = Y=LogA,X=LogB (for NQ/YM)
 - **Spread formula**: `LogY - alpha - beta * LogX` (OLS residual centré sur 0)
+- **Z-Score toggle (Input 30)**: OFF (default) = z-score on beta-weighted spread. ON = z-score on ln(A/B). Use ln(A/B) when β≈1, beta-weighted when β far from 1. Textbox shows "Z:Beta" or "Z:ln". NOT a dynamic Kalman z-score — just classical SMA/StdDev on the beta-adjusted spread series
 - **Scoring**: 40% ADF + 30% Corr + 30% HL (Hurst displayed but out of score)
 - **Input limits**: OLS up to 200k, all periods up to 50k (for 1min timeframe testing)
 - **Z-Score threshold lines**: configurable via inputs (default ±2.5), no longer hardcoded
@@ -53,6 +56,14 @@
 - **Solution**: Use native study **"Write Bar and Study Data To File"** (ID 379) or **Edit > Export Bar and Study Data to Text File** menu command
 - DRAWSTYLE_HIDDEN affects Y-axis scale (unlike IGNORE) — avoid for metric subgraphs in z-score region
 
+### KalmanFixedSpreadIndicator (Mars 2026)
+- **File**: `sierra/KalmanFixedSpreadIndicator.cpp` (2 studies in 1 DLL)
+- **Study 1** (`scsf_KalmanFixedSpreadIndicator`): Fixed alpha/beta spread + z-score + textbox + metrics
+- **Study 2** (`scsf_KalmanFixedDollarSpread`): Dollar-weighted spread with reset time
+- **24 Inputs Study 1**: ChartB(0), PVs(1-2), Ticks(3-4), MicroRatios(5-6), SymNames(7-8), MicroNames(9-10), KalmanAlpha(11), KalmanBeta(12), ZScorePeriod(13), CorrPeriod(14), ADFPeriod(15), HurstPeriod(16), HLPeriod(17), ShowTextBox(18), FontSize(19), SwapRegress(20), ZUpper(21), ZLower(22), **ZScoreOnWeightedSpread(23)**
+- **Z-Score toggle (Input 23)**: OFF = z-score on ln(A/B). ON = z-score on beta-weighted spread (logY - α - β·logX). Classical SMA/StdDev, NOT dynamic Kalman innovation. Textbox shows "Z:Beta" or "Z:ln"
+- **Dollar Spread Study**: Inputs 0-10 (ChartB, Lots, PVs, MicroRatios, ResetTime, Invert). PersistentFloat(0) = RefValue for delta calculation
+
 #### Chart Setup (2 charts, same Chartbook)
 - Chart A: instrument A + both studies (Region 1 = z-score, Region 2 = spread)
 - Chart B: instrument B, data only, **same timeframe + session as Chart A**
@@ -68,6 +79,14 @@
 6. **OLS/Corr/ADF functions must exclude 0.0f values** — warmup zeros pollute regression
 7. **Regression direction affects sizing**: β=0.14 (GC on SI) vs β=4.5 (SI on GC)
 8. **DLL locked by Sierra** — must close Sierra completely before recompiling externally
+
+#### ACSIL Order Submission Gotchas (CRITICAL)
+9. **SCInputRef::GetString() returns "Unset" NOT ""** — `SetString("")` sets StringValue=nullptr. `GetString()` returns "Unset" when nullptr. NEVER check `GetLength()==0` for empty detection. Default to `sc.Symbol`/`sc.GetChartSymbol()` and only override if input is a real symbol.
+10. **s_SCNewOrder REQUIRES TimeInForce + TradeAccount** — Without `TimeInForce=SCT_TIF_DAY` and `TradeAccount=sc.SelectedTradeAccount`, orders return -1 (General order error). Reference: `SpreadOrderEntry.cpp` (official Sierra example).
+11. **Auto Trading must be enabled** — `Trade >> Auto Trading Enabled - Global` or per-chart. Without it, orders silently fail. Error only visible in **Trade >> Trade Service Log**, not Message Log.
+12. **GetTradingErrorTextMessage() returns const char*** — NOT SCString. Use directly in Format `%s` without `.GetChars()`.
+13. **BuyOrder/SellOrder return double, not int** — Cast `(int)sc.BuyOrder()`. >0 = success (order ID), -1 = error.
+14. **Control Bar Buttons require manual setup** — `SetCustomStudyControlBarButtonText()` sets text only. User must: Global Settings → Customize Control Bars → Add Custom Study Button 1/2/3. Then Window → Control Bars - Chart → Chart Control Bar N.
 
 ### Phase 2 TODO
 1. Daily regime indicator (detect 2023-type correlation breakdown)
