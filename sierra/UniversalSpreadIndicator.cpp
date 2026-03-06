@@ -754,6 +754,7 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     int& EntryBarIndex      = sc.GetPersistentInt(2);
     double& LastOrderTime   = sc.GetPersistentDouble(0);
     double& EntrySpreadZ    = sc.GetPersistentDouble(1);
+    double& LastButtonTime  = sc.GetPersistentDouble(2); // 2s cooldown between button events
 
     bool tradingEnabled = (InEnableTrading.GetYesNo() != 0);
 
@@ -790,23 +791,38 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         return;
     }
 
-    // Button detection (last bar only)
-    if (tradingEnabled && sc.Index == sc.ArraySize - 1 && sc.MenuEventID != 0)
+    // Button detection (last bar only).
+    // ACS buttons are TOGGLES: ON state fires MenuEventID on EVERY study call.
+    // Fix: 2s cooldown after last processed button. Same or different button
+    // within 2s = ignored. After 2s = processed (allows scaling/re-entry).
+    if (tradingEnabled && sc.Index == sc.ArraySize - 1
+        && sc.MenuEventID != 0
+        && sc.MenuEventID >= ACS_BUTTON_1 && sc.MenuEventID <= ACS_BUTTON_3)
     {
-        if (sc.MenuEventID >= ACS_BUTTON_1 && sc.MenuEventID <= ACS_BUTTON_3)
+        double nowTime = sc.CurrentSystemDateTime.GetAsDouble();
+        double secsSinceBtn = (nowTime - LastButtonTime) * 86400.0;
+        bool isFlatten = (sc.MenuEventID == ACS_BUTTON_3);
+
+        if (isFlatten || LastButtonTime == 0.0 || secsSinceBtn >= 2.0)
         {
-            sc.SetCustomStudyControlBarButtonEnable(sc.MenuEventID, 0);
-            if (sc.MenuEventID == ACS_BUTTON_1)
+            int btnId = sc.MenuEventID;
+            LastButtonTime = nowTime;
+
+            if (btnId == ACS_BUTTON_1)
                 PendingOrderAction = 1;
-            else if (sc.MenuEventID == ACS_BUTTON_2)
+            else if (btnId == ACS_BUTTON_2)
                 PendingOrderAction = 2;
-            else if (sc.MenuEventID == ACS_BUTTON_3)
+            else if (btnId == ACS_BUTTON_3)
                 PendingOrderAction = 3;
 
-            SCString btnMsg;
-            btnMsg.Format("BUTTON: %s queued",
-                PendingOrderAction == 1 ? "BUY" : (PendingOrderAction == 2 ? "SELL" : "FLATTEN"));
-            sc.AddMessageToLog(btnMsg, 0);
+            // Only log when action is meaningful (skip FLATTEN spam when flat)
+            if (PendingOrderAction != 3 || TradingPosition != 0)
+            {
+                SCString btnMsg;
+                btnMsg.Format("BUTTON: %s queued",
+                    PendingOrderAction == 1 ? "BUY" : (PendingOrderAction == 2 ? "SELL" : "FLATTEN"));
+                sc.AddMessageToLog(btnMsg, 0);
+            }
         }
     }
 
@@ -1213,8 +1229,20 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             && strcmp(rawA, "Unset") != 0 && strcmp(rawA, "0") != 0);
         bool hasInputB = (rawB != nullptr && rawB[0] != '\0'
             && strcmp(rawB, "Unset") != 0 && strcmp(rawB, "0") != 0);
-        if (hasInputA) legASym = rawA;
-        if (hasInputB) legBSym = rawB;
+        // Trim trailing whitespace from input (fixes ret=-5 from "MCLJ26_FUT_CME ")
+        auto TrimRight = [](const char* s) -> SCString {
+            if (s == nullptr) return SCString();
+            char buf[128];
+            int len = (int)strlen(s);
+            if (len > 127) len = 127;
+            memcpy(buf, s, len);
+            while (len > 0 && (buf[len-1] == ' ' || buf[len-1] == '\t'))
+                --len;
+            buf[len] = '\0';
+            return SCString(buf);
+        };
+        if (hasInputA) legASym = TrimRight(rawA);
+        if (hasInputB) legBSym = TrimRight(rawB);
 
         bool legsValid = (legASym.GetLength() > 0 && legBSym.GetLength() > 0);
 
@@ -1259,12 +1287,30 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             }
         }
 
-        // --- P&L calculation (universal: uses Input PointValues) ---
+        // --- P&L calculation (micro-aware: divides PointValue by MicroRatio if trading micro) ---
         double tradePnL = 0.0;
         if (TradingPosition != 0 && legsValid)
         {
-            tradePnL = ((double)PriceA - (double)PosA.AveragePrice) * realQtyA * (double)PointValueA
-                     + ((double)PriceB - (double)PosB.AveragePrice) * realQtyB * (double)PointValueB;
+            // Detect if trading symbol is a micro contract
+            double pvA = (double)PointValueA;
+            double pvB = (double)PointValueB;
+            SCString microNameA = InMicroNameA.GetString();
+            SCString microNameB = InMicroNameB.GetString();
+            // If legASym contains the micro name prefix, use micro point value
+            if (MicroRatioA > 1 && microNameA.GetLength() > 0
+                && strcmp(microNameA.GetChars(), "Unset") != 0
+                && strstr(legASym.GetChars(), microNameA.GetChars()) != nullptr)
+            {
+                pvA = pvA / (double)MicroRatioA;
+            }
+            if (MicroRatioB > 1 && microNameB.GetLength() > 0
+                && strcmp(microNameB.GetChars(), "Unset") != 0
+                && strstr(legBSym.GetChars(), microNameB.GetChars()) != nullptr)
+            {
+                pvB = pvB / (double)MicroRatioB;
+            }
+            tradePnL = ((double)PriceA - (double)PosA.AveragePrice) * realQtyA * pvA
+                     + ((double)PriceB - (double)PosB.AveragePrice) * realQtyB * pvB;
         }
 
         // --- Execute pending orders (NOT during full recalc) ---
@@ -1285,12 +1331,6 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
             // --- BUY SPREAD ---
             else if (PendingOrderAction == 1)
             {
-                if (TradingPosition == -1)
-                {
-                    sc.AddMessageToLog("BUY BLOCKED: already SHORT. FLATTEN first.", 0);
-                }
-                else
-                {
                     // Debug: log trading context
                     SCString dbg;
                     dbg.Format("TRADE DBG: SendToSvc=%d SimOn=%d TradeSym=%s qtyA=%d qtyB=%d IsFullRecalc=%d Index=%d ArrSize=%d",
@@ -1374,18 +1414,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
                             if (SwapRegress) sc.SellOrder(fix); else sc.BuyOrder(fix);
                         }
                     }
-                }
             }
 
             // --- SELL SPREAD ---
             else if (PendingOrderAction == 2)
             {
-                if (TradingPosition == 1)
-                {
-                    sc.AddMessageToLog("SELL BLOCKED: already LONG. FLATTEN first.", 0);
-                }
-                else
-                {
                     int ret1, ret2;
 
                     if (SwapRegress)
@@ -1451,15 +1484,14 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
                             if (SwapRegress) sc.BuyOrder(fix); else sc.SellOrder(fix);
                         }
                     }
-                }
             }
-
             // --- FLATTEN (uses real positions, always allowed) ---
             else if (PendingOrderAction == 3)
             {
                 if (realQtyA == 0 && realQtyB == 0)
                 {
-                    sc.AddMessageToLog("FLATTEN: already flat.", 0);
+                    // Silent: don't log "already flat" to avoid spam from
+                    // shared ACS_BUTTON toggle state across chartbooks.
                     TradingPosition = 0;
                     EntryBarIndex = 0;
                     EntrySpreadZ = 0.0;
@@ -1613,10 +1645,8 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
         TradeBox.AddMethod = UTAM_ADD_OR_ADJUST;
         sc.UseTool(TradeBox);
 
-        // Re-enable buttons after click
-        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_1, 1);
-        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_2, 1);
-        sc.SetCustomStudyControlBarButtonEnable(ACS_BUTTON_3, 1);
+        // No button re-enable needed here — ButtonConsumed pattern handles it.
+        // Full recalc resets ButtonConsumed and re-enables all buttons.
     }
 }
 

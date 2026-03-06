@@ -32,8 +32,9 @@
 - **Study 1** (`scsf_UniversalSpreadIndicator`): Z-Score + ZeroLine + Textbox + metric subgraphs → Region 1
 - **Study 2** (`scsf_UniversalSpreadLine`): Reads Spread from Study 1 via `GetStudyArrayUsingID()` → Region 2
 - **31 Inputs**: ChartB, PointValues, TickSizes, MicroRatios, SymbolNames, OLS/ZScore/Corr/ADF/Hurst/HL periods, ShowTextBox, FontSize, SwapRegression, Z-Score Upper/Lower Line, **EnableTrading(22), LegASymbol(23), LegBSymbol(24), QtyA(25), QtyB(26), DollarTP(27), DollarSL(28), EnableAutoExit(29), ZScoreOnLogRatio(30)**
-- **Trading**: BUY SP / SELL SP / FLAT SP via ACS_BUTTON_1/2/3. Dollar TP/SL auto-exits. 5s cooldown. SwapRegress-aware directions. Position sync via GetTradePositionForSymbolAndAccount()
-- **PersistentVars**: Int(0)=TradingPosition, Int(1)=PendingOrderAction, Int(2)=EntryBarIndex, Double(0)=LastOrderTime, Double(1)=EntrySpreadZ
+- **Trading**: BUY SP / SELL SP / FLAT SP via ACS_BUTTON_1/2/3. Dollar TP/SL auto-exits. 5s order cooldown. SwapRegress-aware directions. Position sync via GetTradePositionForSymbolAndAccount()
+- **Bug fixes (06/03/2026)**: 1) Button 2s cooldown (ACS buttons are TOGGLES — ON state fires MenuEventID on every study recalc; FLATTEN bypasses cooldown), 2) Micro-aware P&L (strstr detects MicroName in legSym, divides PointValue by MicroRatio), 3) Symbol trim (TrimRight lambda strips trailing spaces from GetString inputs), 4) BUY/SELL allowed in any direction (no more "BLOCKED: FLATTEN first"), 5) FLATTEN silent when already flat (no log spam from shared button state across chartbooks)
+- **PersistentVars**: Int(0)=TradingPosition, Int(1)=PendingOrderAction, Int(2)=EntryBarIndex, Double(0)=LastOrderTime, Double(1)=EntrySpreadZ, Double(2)=LastButtonTime(2s button cooldown)
 - **15 Subgraphs**: SG0=Spread(ignore), SG1=Z-Score(line), SG2=Zero(line), SG3=LogA(ignore), SG4=LogB(ignore), SG5=SpreadSMA(ignore), SG6=Z Upper(dash), SG7=Z Lower(dash), SG8=ADF Stat(ignore), SG9=Hurst(ignore), SG10=Correlation(ignore), SG11=Half-Life(ignore), SG12=Score(ignore), **SG13=LogRatio(ignore)**, **SG14=LogRatioSMA(ignore)**
 - **Defaults**: GC/SI (PV 100/5000, Tick 0.10/0.005, MicroRatio 10/5, Swap ON)
 - **Swap Regression Input**: ON = Y=LogB,X=LogA (for GC/SI). OFF = Y=LogA,X=LogB (for NQ/YM)
@@ -87,6 +88,9 @@
 12. **GetTradingErrorTextMessage() returns const char*** — NOT SCString. Use directly in Format `%s` without `.GetChars()`.
 13. **BuyOrder/SellOrder return double, not int** — Cast `(int)sc.BuyOrder()`. >0 = success (order ID), -1 = error.
 14. **Control Bar Buttons require manual setup** — `SetCustomStudyControlBarButtonText()` sets text only. User must: Global Settings → Customize Control Bars → Add Custom Study Button 1/2/3. Then Window → Control Bars - Chart → Chart Control Bar N.
+15. **MenuEventID persists across study calls with UpdateAlways=1** — A single button click sets `sc.MenuEventID` to the button ID, and this value persists across multiple study calls (each tick triggers a call). Without debounce, button handler fires 10-30x per click. Fix: disable button on click, track LastMenuEventID + LastButtonTime, ignore same button within 1s, re-enable only after debounce period. Do NOT reset LastMenuEventID on re-enable.
+16. **Control Bar buttons are per-chart-focus** — MenuEventID goes to the chart with keyboard focus. Multiple chartbooks with same study → button events only reach the focused chart. Fix: close and reopen Control Bar if not responding.
+17. **Symbol input trailing whitespace causes ret=-5** — `GetString()` preserves whitespace from user input. "MCLJ26_FUT_CME " (with space) fails order submission with ret=-5. Always trim input symbol strings.
 
 ### Phase 2 TODO
 1. Daily regime indicator (detect 2023-type correlation breakdown)
