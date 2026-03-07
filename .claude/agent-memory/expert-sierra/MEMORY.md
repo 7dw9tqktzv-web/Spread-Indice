@@ -1084,3 +1084,78 @@ CME (Aurora IL) <--orders-- Teton (Coloc Aurora) <-- sc.BuyOrder()
 - Teton route les ordres des 2 legs directement au CME (< 500μs)
 - Colocation Teton essentielle pour spread : 2 legs quasi-simultanées = minimise legging risk
 - Stack 100% Sierra = aucun tiers entre code ACSIL et CME (data ET ordres)
+
+## DTC Protocol -- Recherche complète (07/03/2026)
+
+### Qu'est-ce que DTC ?
+- **Data and Trading Communications Protocol** : protocole ouvert (dtcprotocol.org) pour market data + trading
+- Conçu par Sierra Chart, adopté par quelques autres plateformes
+- Serveur intégré dans Sierra Chart : `Global Settings → Sierra Chart Server Settings → DTC Protocol Server`
+
+### Configuration du serveur DTC dans Sierra Chart
+- **Port par défaut** : 11099 (TCP), configurable
+- **Port historique** : séparé (11098 typiquement)
+- **WebSocket** : auto-détecté quand le client se connecte via `ws://` ou `wss://`
+- **TLS** : fichiers `TLSCertificate.key` + `TLSCertificate.crt` dans `/ServerCertificate`
+- **Auth** : optionnelle, configurable dans les settings (username/password)
+- **Activation** : `Global Settings → Sierra Chart Server Settings → Enable DTC Protocol Server = Yes`
+- **Encodages** : Binary (défaut historique), Binary VLS, JSON, Compact JSON, Google Protocol Buffers (GPB)
+  - L'encodage se négocie via `ENCODING_REQUEST`/`ENCODING_RESPONSE` au début de la connexion
+  - GPB recommandé pour performance, JSON pour debug/prototypage
+
+### Messages DTC principaux
+- **Connexion** : `ENCODING_REQUEST` → `ENCODING_RESPONSE` → `LOGON_REQUEST` → `LOGON_RESPONSE`
+- **Heartbeat** : `HEARTBEAT` (obligatoire, sinon déconnexion après timeout)
+- **Market Data** : `MARKET_DATA_REQUEST` (type 101), `MARKET_DATA_REJECT`, `MARKET_DATA_SNAPSHOT`
+- **Market Depth** : `MARKET_DEPTH_REQUEST` (type 102), `MARKET_DEPTH_REJECT`
+- **Historical** : `HISTORICAL_PRICE_DATA_REQUEST`, `HISTORICAL_PRICE_DATA_RECORD_RESPONSE`
+- **Trading** : `SUBMIT_NEW_SINGLE_ORDER`, `CANCEL_ORDER`, `CANCEL_REPLACE_ORDER`
+- **Account** : `TRADE_ACCOUNTS_REQUEST`, `ACCOUNT_BALANCE_REQUEST`
+- **Security** : `SECURITY_DEFINITION_FOR_SYMBOL_REQUEST`
+
+### RESTRICTION CRITIQUE : CME Market Data = BLOQUÉ
+- **Depuis Sierra Chart v2351+** : les requêtes `MARKET_DATA_REQUEST` pour symboles CME sont rejetées
+- Réponse : `MARKET_DATA_REJECT` avec `RejectText = "Market data request not allowed"`
+- S'applique AUSSI en localhost (127.0.0.1:11099) — pas seulement remote
+- **Raison** : accords de redistribution CME Group. Sierra Chart n'a pas le droit de redistribuer les données CME via DTC
+- Sierra Chart Engineering : *"This is no longer allowed due to exchange rules"*
+- `MARKET_DEPTH_REQUEST` également rejeté pour CME
+- **Avant v2351** : fonctionnait (confirmé par utilisateurs). Bloqué ensuite par Sierra
+- **Article Hunt Gather Trade (sept 2025)** : confirme le blocage, projet abandonné
+
+### Ce qui FONCTIONNE via DTC
+| Fonctionnalité | Statut | Notes |
+|----------------|--------|-------|
+| Logon/Auth | ✅ | Username/password optionnel |
+| Trading (ordres) | ✅ | BUY/SELL/CANCEL via DTC, Allow Trading doit être activé |
+| Sierra-to-Sierra (sub-instance) | ✅ | Même machine uniquement pour market data |
+| Historical Data | ⚠️ | Fonctionne mais bugs connus (payload tronqué >1000 bars) |
+| CME Real-time Market Data | ❌ | BLOQUÉ par exchange rules |
+| CME Market Depth | ❌ | BLOQUÉ par exchange rules |
+| Non-CME data | ⚠️ | Possiblement OK si pas de restriction exchange |
+
+### Prérequis pour market data DTC (quand autorisé)
+- Le symbole doit avoir un chart intraday ouvert dans Sierra pour que le serveur réponde
+- Le `SymbolID` dans la réponse peut différer de celui envoyé dans la requête
+- Heartbeat obligatoire sinon déconnexion
+
+### Clients Python DTC existants
+| Repo | Stars | Transport | Encoding | Statut |
+|------|-------|-----------|----------|--------|
+| `jseparovic/python-ws-dtc-client` | 41 | WebSocket | JSON Compact | Le plus complet, REST API incluse |
+| `Queeq/pydtc` | 23 | TCP | Binary/Protobuf | Basique, historical data only |
+| `john-yan/SierraChartConnect` | 17 | TCP | Protobuf | Historical downloader |
+| `puneat/SierraCharts.DTC.NET` | 2 | TCP | .NET | C# uniquement |
+
+### Alternative retenue : yfinance (pas DTC)
+- DTC bloqué pour CME data → on utilise `yfinance` (Python) pour le grid search quotidien
+- Données delayed ~15min, suffisant pour analyse de régimes/z-scores
+- Installé dans le venv du projet, prêt à l'emploi
+- Tickers : `CL=F`, `NG=F`, `BZ=F`, `HO=F`, `RB=F`, `GC=F`, `SI=F`, `HG=F`, `PL=F`, `NQ=F`, `ES=F`, `YM=F`, `RTY=F`
+
+### Alternatives DTC potentielles (non implémentées)
+1. **ACSIL File Bridge** : study C++ écrit JSON périodiquement, MCP server Python lit le fichier
+2. **ACSIL sc.HTTPRequest()** : POST async vers serveur Python local
+3. **SC-Py** : bridge tiers (peu maintenu)
+4. **Intraday Data File Format** : Sierra recommande d'écrire directement dans les fichiers .scid
+5. **DTC pour trading seulement** : ordres via DTC (fonctionnel), data via yfinance
