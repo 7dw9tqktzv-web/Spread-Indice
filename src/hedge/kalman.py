@@ -119,6 +119,15 @@ def _kalman_loop(log_a, log_b, R_init, q_scalar_init, gap_P_mult,
             zscores[t] = 0.0
 
         # --- Kalman gain: K = P @ H / F ---
+        # Guard: if F is near zero, skip update to prevent Inf in gain/state
+        if F < 1e-15:
+            betas[t] = th1
+            spreads[t] = log_a[t] - th1 * log_b[t]
+            p_traces[t] = P00 + P11
+            k_betas[t] = 0.0
+            r_values[t] = R
+            continue
+
         # K[0] = (P00*h0 + P01*h1) / F
         # K[1] = (P10*h0 + P11*h1) / F
         k0 = (P00 * h0 + P01 * h1) / F

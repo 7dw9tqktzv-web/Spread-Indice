@@ -6,8 +6,8 @@ import pytest
 from src.backtest.engine import (
     BacktestConfig,
     BacktestEngine,
-    InstrumentSpec,
 )
+from src.config.instruments import InstrumentSpec
 
 
 def _make_series(values: list[float], name: str = "price") -> pd.Series:

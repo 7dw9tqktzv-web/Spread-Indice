@@ -13,6 +13,7 @@ Indicator timing:
   - gate: bar [i-1] value (no look-ahead on binary decisions).
 """
 
+import logging
 import math  # noqa: F401 — used inside @njit functions
 
 import numpy as np
@@ -673,6 +674,13 @@ def run_hybrid_backtest(
         fast_a, fast_b, fast_ts, fast_min,
         cfg,
     )
+
+    # Warn if trade buffer was full (trades may have been dropped)
+    if n_trades >= _MAX_TRADES:
+        logging.getLogger(__name__).warning(
+            f"Trade buffer full: {n_trades} trades recorded (max {_MAX_TRADES}). "
+            "Additional trades may have been dropped. Results are incomplete."
+        )
 
     # Convert to DataFrame
     trades_df = _results_to_dataframe(raw_results, n_trades)

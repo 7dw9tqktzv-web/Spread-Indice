@@ -192,8 +192,8 @@ def compute_confidence(
 # ---------------------------------------------------------------------------
 
 @njit(cache=True)
-def _apply_conf_filter_numba(sig: np.ndarray, confidence: np.ndarray,
-                              min_conf: float) -> np.ndarray:
+def apply_conf_filter_numba(sig: np.ndarray, confidence: np.ndarray,
+                             min_conf: float) -> np.ndarray:
     """Block new entries where confidence < min_conf. Never blocks exits."""
     out = sig.copy()
     prev = 0
@@ -203,6 +203,10 @@ def _apply_conf_filter_numba(sig: np.ndarray, confidence: np.ndarray,
             out[t] = 0
         prev = out[t]
     return out
+
+
+# Backward-compatible alias (was private, now public)
+_apply_conf_filter_numba = apply_conf_filter_numba
 
 
 def apply_confidence_filter(
@@ -230,7 +234,7 @@ def apply_confidence_filter(
         config = ConfidenceConfig()
 
     confidence = compute_confidence(metrics, config)
-    sig = _apply_conf_filter_numba(
+    sig = apply_conf_filter_numba(
         signals.values.astype(np.int8),
         confidence.values,
         config.min_confidence,

@@ -6,9 +6,9 @@ import pandas as pd
 from src.backtest.engine import (
     BacktestConfig,
     BacktestEngine,
-    InstrumentSpec,
     _apply_dollar_stop,
 )
+from src.config.instruments import InstrumentSpec
 from src.sizing.position import find_optimal_multiplier
 
 # ─── find_optimal_multiplier ─────────────────────────────────────────

@@ -30,4 +30,13 @@ def align_pair(a: BarData, b: BarData, pair: SpreadPair) -> AlignedPair:
             f"NaN values found after alignment: {nan_counts[nan_counts > 0].to_dict()}"
         )
 
+    # Guard against non-positive prices (log(0) or log(negative) would poison pipeline)
+    for col in ("close_a", "close_b"):
+        if (merged[col] <= 0).any():
+            n_bad = int((merged[col] <= 0).sum())
+            raise ValueError(
+                f"Non-positive prices in '{col}': {n_bad} bars. "
+                "Cannot compute log-prices — check raw data for zeros or negatives."
+            )
+
     return AlignedPair(pair=pair, df=merged, timeframe=a.timeframe)

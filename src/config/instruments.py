@@ -23,13 +23,13 @@ import yaml
 class InstrumentSpec:
     """Contract specification for one instrument."""
 
-    name: str
-    exchange: str
     multiplier: float  # $/point
     tick_size: float
     tick_value: float
-    commission: float  # per side per contract
-    margin: float
+    name: str = ""
+    exchange: str = ""
+    commission: float = 2.50  # per side per contract
+    margin: float = 0.0
 
 
 # Module-level cache

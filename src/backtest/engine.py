@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
+from src.config.instruments import InstrumentSpec
 from src.sizing.position import calculate_position_size, find_optimal_multiplier
 
 
@@ -23,14 +24,6 @@ class BacktestConfig:
     commission_per_contract: float = 2.50  # per side per contract
     slippage_ticks: int = 1
     dollar_stop: float = 0.0  # 0 = disabled, > 0 = max loss per trade in $
-
-
-@dataclass(frozen=True)
-class InstrumentSpec:
-    """Contract specification for one instrument."""
-    multiplier: float   # point value ($/pt)
-    tick_size: float
-    tick_value: float
 
 
 @dataclass
@@ -149,35 +142,64 @@ _EMPTY_RESULT = {
 }
 
 
+@njit(cache=True)
+def _detect_and_pair_trades_numba(sig):
+    """Detect signal transitions and pair entries with exits (numba-compiled).
+
+    Returns (te, tx, num_trades) where te/tx are pre-allocated arrays
+    and num_trades indicates valid entries count.
+    """
+    n = len(sig)
+    # Pre-allocate max possible trades (n/2 theoretical max, capped)
+    max_trades = n // 2 + 1
+    te = np.empty(max_trades, dtype=np.int64)
+    tx = np.empty(max_trades, dtype=np.int64)
+
+    # Detect entry and exit bars
+    n_entries = 0
+    n_exits = 0
+    entry_bars = np.empty(n, dtype=np.int64)
+    exit_bars = np.empty(n, dtype=np.int64)
+
+    prev = np.int8(0)
+    for i in range(n):
+        curr = sig[i]
+        if prev == 0 and curr != 0:
+            entry_bars[n_entries] = i
+            n_entries += 1
+        elif prev != 0 and curr == 0:
+            exit_bars[n_exits] = i
+            n_exits += 1
+        prev = curr
+
+    if n_entries == 0 or n_exits == 0:
+        return te[:0], tx[:0], 0
+
+    # Pair entries with exits
+    num_trades = 0
+    exit_idx = 0
+    for e in range(n_entries):
+        eb = entry_bars[e]
+        while exit_idx < n_exits and exit_bars[exit_idx] <= eb:
+            exit_idx += 1
+        if exit_idx < n_exits:
+            te[num_trades] = eb
+            tx[num_trades] = exit_bars[exit_idx]
+            num_trades += 1
+            exit_idx += 1
+
+    return te[:num_trades], tx[:num_trades], num_trades
+
+
 def _detect_and_pair_trades(sig: np.ndarray):
     """Detect signal transitions and pair entries with exits.
 
     Returns (te, tx, num_trades) or (None, None, 0) if no trades.
     """
-    prev_sig = np.roll(sig, 1)
-    prev_sig[0] = 0
-
-    entry_bars = np.where((prev_sig == 0) & (sig != 0))[0]
-    exit_bars = np.where((prev_sig != 0) & (sig == 0))[0]
-
-    if len(entry_bars) == 0 or len(exit_bars) == 0:
+    te, tx, num_trades = _detect_and_pair_trades_numba(sig.astype(np.int8))
+    if num_trades == 0:
         return None, None, 0
-
-    trade_entries = []
-    trade_exits = []
-    exit_idx = 0
-    for eb in entry_bars:
-        while exit_idx < len(exit_bars) and exit_bars[exit_idx] <= eb:
-            exit_idx += 1
-        if exit_idx < len(exit_bars):
-            trade_entries.append(eb)
-            trade_exits.append(exit_bars[exit_idx])
-            exit_idx += 1
-
-    if len(trade_entries) == 0:
-        return None, None, 0
-
-    return np.array(trade_entries), np.array(trade_exits), len(trade_entries)
+    return te, tx, num_trades
 
 
 def _compute_trades(
@@ -309,6 +331,11 @@ def run_backtest_vectorized(
     avg_duration_bars, max_duration_bars
     """
     n = len(px_a)
+    if not (len(px_b) == n and len(sig) == n and len(bt) == n):
+        raise ValueError(
+            f"Array length mismatch: px_a={n}, px_b={len(px_b)}, "
+            f"sig={len(sig)}, bt={len(bt)}"
+        )
 
     te, tx, num_trades = _detect_and_pair_trades(sig)
 
@@ -384,6 +411,12 @@ def run_backtest_grid(
     Returns trade-level stats: trades, win_rate, pnl, profit_factor,
     avg_pnl_trade, avg_duration_bars, max_dd, plus trade arrays for CPCV.
     """
+    if not (len(px_a) == len(px_b) == len(sig) == len(bt)):
+        raise ValueError(
+            f"Array length mismatch: px_a={len(px_a)}, px_b={len(px_b)}, "
+            f"sig={len(sig)}, bt={len(bt)}"
+        )
+
     te, tx, num_trades = _detect_and_pair_trades(sig)
 
     if num_trades == 0:

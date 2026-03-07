@@ -14,6 +14,20 @@ class SignalConfig:
     z_exit: float = 0.5     # |z| < z_exit → exit position
     z_stop: float = 4.0     # |z| > z_stop → stop loss
 
+    def __post_init__(self):
+        if self.z_entry <= 0:
+            raise ValueError(f"z_entry must be positive, got {self.z_entry}")
+        if self.z_exit < 0:
+            raise ValueError(f"z_exit must be non-negative, got {self.z_exit}")
+        if self.z_exit >= self.z_entry:
+            raise ValueError(
+                f"z_exit ({self.z_exit}) must be < z_entry ({self.z_entry})"
+            )
+        if self.z_stop <= self.z_entry:
+            raise ValueError(
+                f"z_stop ({self.z_stop}) must be > z_entry ({self.z_entry})"
+            )
+
 
 # Position states
 _FLAT = 0

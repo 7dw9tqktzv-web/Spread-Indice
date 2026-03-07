@@ -21,7 +21,8 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.backtest.engine import BacktestConfig, BacktestEngine, InstrumentSpec
+from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.config.instruments import get_instrument_spec
 from src.backtest.performance import compute_performance
 from src.data.alignment import align_pair
 from src.data.cache import cache_aligned_pair, load_aligned_pair_cache
@@ -108,13 +109,9 @@ def build_confidence_config(cfg: dict) -> ConfidenceConfig:
     )
 
 
-def build_instrument_spec(instruments: dict, name: str) -> InstrumentSpec:
-    s = instruments[name]
-    return InstrumentSpec(
-        multiplier=s["multiplier"],
-        tick_size=s["tick_size"],
-        tick_value=s["tick_value"],
-    )
+def build_instrument_spec(instruments: dict, name: str):
+    """Build spec from YAML dict (backward compat). Prefer get_instrument_spec()."""
+    return get_instrument_spec(name)
 
 
 def build_hedge_kwargs(cfg: dict, method: str) -> dict:
