@@ -968,7 +968,11 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
     // ========================================================================
     // LOG RATIO (always computed for z-score toggle)
     // ========================================================================
-    float logRatioVal = LogA[sc.Index] - LogB[sc.Index];  // ln(A/B)
+    // When SwapRegress, spread convention is LogB - beta*LogA (B is dependent)
+    // so ln ratio must also be ln(B/A) to keep same sign convention
+    float logRatioVal = SwapRegress
+        ? (LogB[sc.Index] - LogA[sc.Index])   // ln(B/A) -- matches swap direction
+        : (LogA[sc.Index] - LogB[sc.Index]);  // ln(A/B) -- default direction
     LogRatio[sc.Index] = logRatioVal;
 
     // ========================================================================
@@ -979,7 +983,7 @@ SCSFExport scsf_UniversalSpreadIndicator(SCStudyInterfaceRef sc)
 
     if (useLogRatio)
     {
-        // Z-score on ln(A/B) -- assumes beta=1, alpha cancels in normalization
+        // Z-score on ln ratio (ln(A/B) or ln(B/A) if swap) -- sign matches spread convention
         sc.SimpleMovAvg(LogRatio, LogRatioSMA, ZScorePeriod);
         float stdDev = CalculateStdDev(LogRatio, sc.Index, ZScorePeriod);
         if (stdDev > 1e-10f)

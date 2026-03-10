@@ -451,6 +451,7 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
     SCInputRef InZUpperThresh = sc.Input[21];
     SCInputRef InZLowerThresh = sc.Input[22];
     SCInputRef InZScoreOnKalman = sc.Input[23];
+    SCInputRef InRSquared       = sc.Input[24];
 
     // ========================================================================
     // DEFAULTS
@@ -622,6 +623,10 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
 
         InZScoreOnKalman.Name = "Z-Score on Weighted Spread (beta-adjusted)";
         InZScoreOnKalman.SetYesNo(0);  // Default: z-score on ln(A/B)
+
+        InRSquared.Name = "R-Squared (from dashboard)";
+        InRSquared.SetFloat(0.0f);
+        InRSquared.SetFloatLimits(0.0f, 1.0f);
 
         return;
     }
@@ -914,10 +919,13 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
         bool hasMicro = (MicroRatioA > 1 && MicroRatioB > 1);
 
         const char* zMethod = useKalmanZ ? "Beta" : "ln";
+        float rSquared = InRSquared.GetFloat();
+        const char* rSqLabel = (rSquared >= 0.9f) ? "Fort" :
+                               (rSquared >= 0.5f) ? "Mod"  : "Faible";
 
         SCString InfoText;
         InfoText.Format(
-            "%s / %s  |  B %.4f  |  a %.4f  |  Z:%s\n"
+            "%s / %s  |  B %.4f  |  a %.4f  |  R2 %.2f %s  |  Z:%s\n"
             "-------------------------------------\n"
             "ADF: %.2f %s    Hurst: %.2f %s\n"
             "Corr: %.2f %s     HL: %.0f (%s) %s\n"
@@ -926,7 +934,7 @@ SCSFExport scsf_KalmanFixedSpreadIndicator(SCStudyInterfaceRef sc)
             "-------------------------------------\n"
             "STD:  %.2f %s  /  %.2f %s\n"
             "INV:  %.2f %s  /  %.2f %s",
-            symA.GetChars(), symB.GetChars(), beta, alpha, zMethod,
+            symA.GetChars(), symB.GetChars(), beta, alpha, rSquared, rSqLabel, zMethod,
             adfStat, adfLabel.GetChars(), hurst, hurstLabel.GetChars(),
             correlation, corrLabel.GetChars(),
             halfLife, hlTimeStr.GetChars(), hlLabel.GetChars(),
