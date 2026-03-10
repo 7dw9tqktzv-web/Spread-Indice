@@ -1,5 +1,15 @@
 # Expert Engine — Knowledge Base
 
+## Topic Files (Cointegration & Theory)
+- [cointegration-fundamentals.md](cointegration-fundamentals.md) — Stationnarite, I(d), ADF/KPSS, Hurst, cointegration def, Engle-Granger, MacKinnon, univers 6 paires
+- [ou-ar1-kalman-theory.md](ou-ar1-kalman-theory.md) — AR(1), OU process, isomorphisme, sigma_eq vs sigma_diffusion, Kalman (state-space, Joseph form, NIS, Q par classe), Bertram
+- [pipeline-v1-reference.md](pipeline-v1-reference.md) — Pipeline complet V1 : 5 etapes, signal engine (machine 4 etats), Kalman engine, filtres A/B/C, sizing beta-neutral, couts RT, metriques
+- [validation-overfitting.md](validation-overfitting.md) — Overfitting, look-ahead bias, WFA, CPCV(10,2), DSR, binary gates, confidence scoring, neighborhood robustness, multipliers & COMM/SLIP par actif
+
+**Sources analysees** : ANALYSE_COMPLETE.md (PDF+5 videos), Kalman_Filter.md (Quant Guild), Kalman_python.md (IBKR OU app), SYNTHESE_TRANSVERSALE.md (WFA), modele_cointegration_v1_FINAL.docx (pipeline V1), quant-trading-modules.docx (6 modules avances GC/SI)
+
+---
+
 ## Architecture Actuelle (`src/backtest/engine.py`)
 
 ### 3 modes de backtest
