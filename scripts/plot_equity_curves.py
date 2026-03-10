@@ -20,7 +20,7 @@ from src.hedge.factory import create_estimator
 from src.metrics.dashboard import MetricsConfig, compute_all_metrics
 from src.signals.filters import (
     ConfidenceConfig,
-    _apply_conf_filter_numba,
+    apply_conf_filter_numba,
     apply_window_filter_numba,
     compute_confidence,
 )
@@ -59,7 +59,7 @@ def build_and_run(pair, aligned, cfg):
                                   aligned.df["close_b"], cfg["metrics_cfg"])
     confidence = compute_confidence(metrics, cfg["conf_cfg"]).values
 
-    sig = _apply_conf_filter_numba(raw, confidence, cfg["conf"])
+    sig = apply_conf_filter_numba(raw, confidence, cfg["conf"])
 
     entry_start, entry_end = cfg["window_min"]
     sig = apply_window_filter_numba(sig, minutes, entry_start, entry_end, FLAT_MIN)

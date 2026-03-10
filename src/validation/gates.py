@@ -79,7 +79,7 @@ def apply_gate_filter_numba(
 ) -> np.ndarray:
     """Block new entries where gate_mask is False. Never blocks exits.
 
-    Same entry-only blocking logic as _apply_conf_filter_numba but with
+    Same entry-only blocking logic as apply_conf_filter_numba but with
     a boolean mask instead of a confidence score.
 
     Parameters

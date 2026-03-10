@@ -96,11 +96,18 @@ def compute_performance(result: BacktestResult, bars_per_day: int = 264) -> Perf
     else:
         sharpe = 0.0
 
-    # Calmar ratio
+    # Calmar ratio (log-space to avoid overflow on short series)
     total_return = (eq[-1] - eq[0]) / eq[0] if eq[0] != 0 else 0.0
     n_bars = len(eq)
-    with np.errstate(invalid="ignore"):
-        annualized_return = (1 + total_return) ** (bars_per_year / max(n_bars, 1)) - 1
+    if n_bars < bars_per_day or abs(total_return) < 1e-12:
+        annualized_return = 0.0
+    else:
+        try:
+            annualized_return = np.exp(
+                np.log1p(total_return) * bars_per_year / n_bars
+            ) - 1
+        except (OverflowError, FloatingPointError):
+            annualized_return = 0.0
     if np.isnan(annualized_return) or np.isinf(annualized_return):
         annualized_return = 0.0
     calmar = (annualized_return * 100) / max_drawdown_pct if max_drawdown_pct > 0 else float("inf")

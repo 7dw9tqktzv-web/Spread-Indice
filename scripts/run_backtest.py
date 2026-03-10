@@ -22,8 +22,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
-from src.config.instruments import get_instrument_spec
 from src.backtest.performance import compute_performance
+from src.config.instruments import get_instrument_spec
 from src.data.alignment import align_pair
 from src.data.cache import cache_aligned_pair, load_aligned_pair_cache
 from src.data.cleaner import clean
@@ -140,7 +140,7 @@ def all_pair_names(pairs_cfg: dict) -> list[str]:
 # Data preparation (cacheable)
 # ---------------------------------------------------------------------------
 
-def prepare_instrument(instrument: Instrument, session: SessionConfig) -> None:
+def prepare_instrument(instrument: Instrument, session: SessionConfig):
     """Load, clean, resample a single instrument. Returns BarData 5min."""
     raw_path = PROJECT_ROOT / "raw" / RAW_FILE_PATTERN.format(symbol=instrument.value)
     log.info(f"[DATA] Loading {instrument.value} ({raw_path.name})")

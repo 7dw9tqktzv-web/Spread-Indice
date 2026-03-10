@@ -43,6 +43,7 @@ CFG_TICK_B = 11
 CFG_SLIPPAGE = 12
 CFG_COMMISSION = 13
 CFG_Z_COOLDOWN = 14     # z threshold to exit COOLDOWN (default = z_exit)
+CFG_TIME_STOP = 15      # max bars in position (0 = disabled)
 CFG_SIZE = 16
 
 

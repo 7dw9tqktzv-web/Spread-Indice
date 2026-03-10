@@ -205,8 +205,6 @@ def apply_conf_filter_numba(sig: np.ndarray, confidence: np.ndarray,
     return out
 
 
-# Backward-compatible alias (was private, now public)
-_apply_conf_filter_numba = apply_conf_filter_numba
 
 
 def apply_confidence_filter(

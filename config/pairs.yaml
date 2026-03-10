@@ -1,24 +1,59 @@
 pairs:
+  # Index futures
   NQ_ES:
     leg_a: NQ
     leg_b: ES
-
   NQ_RTY:
     leg_a: NQ
     leg_b: RTY
-
   NQ_YM:
     leg_a: NQ
     leg_b: YM
-
   ES_RTY:
     leg_a: ES
     leg_b: RTY
-
   ES_YM:
     leg_a: ES
     leg_b: YM
-
   RTY_YM:
     leg_a: RTY
     leg_b: YM
+
+  # Energy futures
+  CL_BZ:
+    leg_a: CL
+    leg_b: BZ
+  CL_HO:
+    leg_a: CL
+    leg_b: HO
+  CL_RB:
+    leg_a: CL
+    leg_b: RB
+  CL_NG:
+    leg_a: CL
+    leg_b: NG
+
+  # Metal futures
+  GC_SI:
+    leg_a: GC
+    leg_b: SI
+  GC_PL:
+    leg_a: GC
+    leg_b: PL
+  SI_HG:
+    leg_a: SI
+    leg_b: HG
+  GC_HG:
+    leg_a: GC
+    leg_b: HG
+
+  # Grain futures
+  ZC_ZW:
+    leg_a: ZC
+    leg_b: ZW
+  ZC_ZS:
+    leg_a: ZC
+    leg_b: ZS
+  ZW_ZS:
+    leg_a: ZW
+    leg_b: ZS

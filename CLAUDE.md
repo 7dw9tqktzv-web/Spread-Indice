@@ -10,8 +10,20 @@ Le biais directionnel journalier est discretionnaire -- le systeme time l'entree
 ## Commands
 
 ```bash
-source venv/Scripts/activate                              # ALWAYS work in venv
+# Setup
+python -m venv venv && source venv/Scripts/activate
+pip install -r requirements.txt
+
+# Tests (157 tests)
+source venv/Scripts/activate
 python -m pytest tests/ -v --tb=short                     # All tests
+python -m pytest tests/test_hedge/test_kalman.py -v       # Single module
+python -m pytest tests/ -k "test_engine" -v               # By keyword
+
+# Lint
+ruff check src/
+
+# Backtest
 python scripts/run_backtest.py --pair NQ_YM --method ols_rolling
 python scripts/run_backtest.py --pair NQ_RTY --method kalman --alpha-ratio 3e-7
 ```
@@ -25,7 +37,7 @@ Phase 1 : moteur de backtest Python complet -- `src/data/`, `src/hedge/` (OLS+Ka
 Phase 2 C++ : indicateurs ACSIL universels (visual + semi-auto trading) dans `sierra/`.
 
 ### Data Flow
-`raw/*.txt` (Sierra CSV 1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread/builder` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
+Sierra CSV (1min) -> `loader` -> `cleaner` -> `resampler` (1/3/5min) -> `alignment` (pair) -> `hedge/` (ratio) -> `spread` -> `metrics/` -> `signals/` -> `backtest/engine` -> `performance`
 
 Dependencies flow strictly downward. Config YAML loaded at script level, injected as dataclasses.
 
@@ -36,7 +48,8 @@ Dependencies flow strictly downward. Config YAML loaded at script level, injecte
 - **`src/stats/`** -- Pure functions: hurst (variance-ratio), halflife (rolling cov), correlation, stationarity (2 ADF variants)
 - **`src/metrics/`** -- Aggregation: `MetricsConfig` + `compute_all_metrics()` -> DataFrame `adf_stat, hurst, half_life, correlation`
 - **`src/signals/`** -- `generator.py`: 4-state machine (numba JIT). `filters.py`: confidence, time stop, window filter (all numba)
-- **`src/backtest/`** -- `engine.py`: bar-by-bar + vectorized + grid-optimized. `performance.py`: PerformanceMetrics
+- **`src/backtest/`** -- `engine.py`: bar-by-bar + vectorized + grid-optimized. `engine_hybrid.py`: hybrid 1s/5min (tick-level entries/exits). `performance.py`: PerformanceMetrics
+- **`src/data/loader_1s.py`** -- 1-second bar data loading (for hybrid engine)
 - **`src/validation/`** -- `cpcv.py`: CPCV(10,2) 45 chemins. `gates.py`: binary ADF/Hurst/Corr gates. `neighborhood.py`: robustesse L1. `propfirm.py`: metriques $150K. `deflated_sharpe.py`: DSR correction
 - **`config/`** -- `instruments.yaml` (21 futures), `pairs.yaml`, `backtest.yaml`
 - **`sierra/`** -- Phase 2 ACSIL C++. Indicateurs universels + exemples de reference. Source aussi: `F:\SierreChart_Spread_Indices\ACS_Source\`
@@ -85,7 +98,7 @@ Compilation : `F:\SierreChart_Spread_Indices\ACS_Source\VisualCCompile.Bat`
 - Toujours travailler en **venv**
 - Donnees en **Chicago Time (CT)**, calculs sur **log-prix** (ln)
 - Session : 17h30-15h30 CT (Globex), fenetre trading configurable
-- **Git** : utiliser `gh` pour commits/push -- jamais de commandes git manuelles
+- **Git** : commits via `git commit`, push via `git push`. Utiliser `gh` pour PRs/issues.
 - Valider chaque etape avec l'utilisateur avant de passer a la suivante
 
 ## Tech Stack

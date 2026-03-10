@@ -54,6 +54,8 @@ def half_life_rolling(
     y.index = x.index
 
     # Rolling covariance and variance (pandas C-optimized)
+    # Note: window-1 because y = spread.iloc[1:] already lost one element,
+    # so effective lookback is (window - 1) bars of (Z(t), Z(t-1)) pairs.
     cov_xy = y.rolling(window - 1, min_periods=window - 1).cov(x)
     var_x = x.rolling(window - 1, min_periods=window - 1).var()
 

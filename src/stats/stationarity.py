@@ -137,7 +137,7 @@ def adf_rolling(
         try:
             result = adfuller(chunk.values, maxlag=None, autolag="AIC")
             pvalues.iloc[i] = result[1]
-        except (ValueError, np.linalg.LinAlgError):
+        except (ValueError, np.linalg.LinAlgError, IndexError):
             pass
 
     return pvalues.ffill()

@@ -108,7 +108,7 @@ def compute_sharpe_from_pnls(pnls: np.ndarray) -> float:
     """
     if len(pnls) < 2:
         return 0.0
-    std = pnls.std()
+    std = pnls.std(ddof=0)
     if std < 1e-12:
         return 0.0
     return float(pnls.mean() / std)

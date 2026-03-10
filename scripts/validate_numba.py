@@ -13,7 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.backtest.engine import run_backtest_grid, run_backtest_vectorized
 from src.signals.filters import (
     ConfidenceConfig,
-    _apply_conf_filter_numba,
+    apply_conf_filter_numba,
     apply_time_stop,
     apply_window_filter_numba,
     compute_confidence,
@@ -219,8 +219,8 @@ def test_conf_filter():
     conf_test = np.random.uniform(0, 100, n)
 
     old = apply_conf_filter_python(sig_test, conf_test, 70.0)
-    _ = _apply_conf_filter_numba(sig_test[:100], conf_test[:100], 70.0)  # warmup
-    new = _apply_conf_filter_numba(sig_test, conf_test, 70.0)
+    _ = apply_conf_filter_numba(sig_test[:100], conf_test[:100], 70.0)  # warmup
+    new = apply_conf_filter_numba(sig_test, conf_test, 70.0)
 
     match = np.array_equal(old, new)
     print(f"  Filtres identiques: {match}")

@@ -59,7 +59,7 @@ def make_aligned_pair_with_gap(
     idx_before = pd.date_range("2024-01-02 18:00", periods=n_before, freq="5min")
     gap_start = idx_before[-1] + pd.Timedelta(minutes=gap_minutes)
     idx_after = pd.date_range(gap_start, periods=n_after, freq="5min")
-    idx = idx_before.append(idx_after)
+    idx = pd.DatetimeIndex(list(idx_before) + list(idx_after))
 
     n = len(idx)
     log_returns_b = rng.normal(0, 0.001, n)

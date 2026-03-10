@@ -158,8 +158,8 @@ def _detect_and_pair_trades_numba(sig):
     # Detect entry and exit bars
     n_entries = 0
     n_exits = 0
-    entry_bars = np.empty(n, dtype=np.int64)
-    exit_bars = np.empty(n, dtype=np.int64)
+    entry_bars = np.empty(max_trades, dtype=np.int64)
+    exit_bars = np.empty(max_trades, dtype=np.int64)
 
     prev = np.int8(0)
     for i in range(n):

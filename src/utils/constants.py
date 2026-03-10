@@ -4,12 +4,37 @@ from enum import StrEnum
 
 
 class Instrument(StrEnum):
+    # Index futures
     NQ = "NQ"
     ES = "ES"
     RTY = "RTY"
     YM = "YM"
     MNQ = "MNQ"
     MYM = "MYM"
+    # Energy futures
+    CL = "CL"
+    NG = "NG"
+    BZ = "BZ"
+    HO = "HO"
+    RB = "RB"
+    MCL = "MCL"
+    QG = "QG"
+    # Metal futures
+    GC = "GC"
+    SI = "SI"
+    HG = "HG"
+    PL = "PL"
+    PA = "PA"
+    MGC = "MGC"
+    SIL = "SIL"
+    MHG = "MHG"
+    # Grain futures
+    ZC = "ZC"
+    ZW = "ZW"
+    ZS = "ZS"
+    MZC = "MZC"
+    MZW = "MZW"
+    MZS = "MZS"
 
 
 class HedgeMethod(StrEnum):
