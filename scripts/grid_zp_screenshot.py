@@ -1,19 +1,34 @@
-"""Grid search TF x ZP anchored on screenshot prices."""
+"""Grid search TF x ZP anchored on screenshot prices.
+
+Usage:
+    python scripts/grid_zp_screenshot.py
+    Edit the PARAMS dict below for each new screenshot.
+"""
 import yfinance as yf
 import numpy as np
 import pandas as pd
-import sys, io
+import sys
+import io
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
-TARGET_Z = 1.71
-TARGET_LOG = 2.7166
-
-# Kalman/OLS params from screenshot
-KALMAN_ALPHA = 0.4582
-KALMAN_BETA = 2.2584
-OLS_ALPHA = -1.6893
-OLS_BETA = 3.4537
+# =====================================================================
+# PARAMS -- edit these for each screenshot
+# =====================================================================
+PARAMS = {
+    "pair": "ES / YM",
+    "ticker_a": "ES=F",
+    "ticker_b": "YM=F",
+    "target_z": 2.33,
+    "target_log": -1.9441,
+    "target_price_a": 6726.3,
+    "kalman_alpha": -0.0162,
+    "kalman_beta": 0.8207,
+    "ols_alpha": 3.6629,
+    "ols_beta": 0.4796,
+    # Set True if beta close to 1 (viable), False if beta >> 1
+    "include_ln": True,
+}
 
 TF_MINUTES = {"1min": 1, "2min": 2, "5min": 5, "15min": 15, "30min": 30, "1h": 60}
 TIMEFRAMES = {
@@ -26,102 +41,92 @@ TIMEFRAMES = {
 }
 
 
-def fetch_data():
+def fetch_data(ticker_a, ticker_b):
     all_data = {}
     for tf_name, (period, interval) in TIMEFRAMES.items():
-        si = yf.download("SI=F", period=period, interval=interval, progress=False)
-        hg = yf.download("HG=F", period=period, interval=interval, progress=False)
-        common = si.index.intersection(hg.index)
-        si_s = pd.Series(si.loc[common, "Close"].values.flatten(), index=common)
-        hg_s = pd.Series(hg.loc[common, "Close"].values.flatten(), index=common)
-        all_data[tf_name] = (si_s, hg_s, common)
-        print(f"{tf_name}: {len(common)} barres")
+        a = yf.download(ticker_a, period=period, interval=interval, progress=False)
+        b = yf.download(ticker_b, period=period, interval=interval, progress=False)
+        common = a.index.intersection(b.index)
+        a_s = pd.Series(a.loc[common, "Close"].values.flatten(), index=common)
+        b_s = pd.Series(b.loc[common, "Close"].values.flatten(), index=common)
+        all_data[tf_name] = (a_s, b_s, common)
+        print(f"{tf_name}: {len(common)} barres, {common[0]} -> {common[-1]}")
     return all_data
 
 
-def find_anchors(all_data):
-    """Find bar closest to screenshot prices for each TF."""
+def find_anchors(all_data, p):
     anchor_indices = {}
-    print("\nANCRAGE par TF:")
-    print(f"{'TF':>5} | {'Timestamp':>30} | {'SI':>7} | {'HG':>7} | {'Log':>8} | {'Bar#':>5}")
-    print("-" * 80)
+    print(f"\nANCRAGE (cible: A={p['target_price_a']}, Log={p['target_log']}):")
+    print(f"{'TF':>5} | {'Timestamp':>30} | {'A':>9} | {'B':>9} | {'Log':>8} | {'Bar#':>5}")
+    print("-" * 85)
 
-    for tf_name, (si_s, hg_s, common) in all_data.items():
-        log_r = np.log(si_s) - np.log(hg_s)
-        score = (log_r - TARGET_LOG).abs() + 0.01 * (si_s - 88.4).abs()
+    for tf_name, (a_s, b_s, common) in all_data.items():
+        log_r = np.log(a_s) - np.log(b_s)
+        score = (log_r - p["target_log"]).abs() + 0.0001 * (a_s - p["target_price_a"]).abs()
         best_ts = score.idxmin()
         best_pos = list(common).index(best_ts)
         anchor_indices[tf_name] = best_pos
         print(
-            f"{tf_name:>5} | {str(best_ts):>30} | {si_s[best_ts]:>7.2f} | "
-            f"{hg_s[best_ts]:>7.4f} | {log_r[best_ts]:>8.4f} | {best_pos:>5}"
+            f"{tf_name:>5} | {str(best_ts):>30} | {a_s[best_ts]:>9.2f} | "
+            f"{b_s[best_ts]:>9.2f} | {log_r[best_ts]:>8.4f} | {best_pos:>5}"
         )
     return anchor_indices
 
 
-def grid_search(all_data, anchor_indices):
+def grid_search(all_data, anchor_indices, p):
     results = []
-    for tf_name, (si_s, hg_s, common) in all_data.items():
-        anchor = anchor_indices[tf_name]
-        log_si = np.log(si_s.values)
-        log_hg = np.log(hg_s.values)
+    models_cfg = {
+        "Kalman": (p["kalman_alpha"], p["kalman_beta"]),
+        "OLS": (p["ols_alpha"], p["ols_beta"]),
+    }
 
-        kalman_sp = pd.Series(log_si - KALMAN_ALPHA - KALMAN_BETA * log_hg)
-        ols_sp = pd.Series(log_si - OLS_ALPHA - OLS_BETA * log_hg)
-        models = {"Kalman": kalman_sp, "OLS": ols_sp}
+    for tf_name, (a_s, b_s, common) in all_data.items():
+        anchor = anchor_indices[tf_name]
+        log_a = np.log(a_s.values)
+        log_b = np.log(b_s.values)
+
+        models = {}
+        if p["include_ln"]:
+            models["ln(A/B)"] = pd.Series(log_a - log_b)
+        for name, (alpha, beta) in models_cfg.items():
+            models[name] = pd.Series(log_a - alpha - beta * log_b)
 
         max_zp = min(anchor, 500)
 
         for model_name, series in models.items():
             for zp in range(5, max_zp + 1):
-                window = series.iloc[anchor - zp + 1 : anchor + 1]
+                window = series.iloc[anchor - zp + 1: anchor + 1]
                 mu = window.mean()
                 sigma = window.std()
                 if sigma <= 1e-10:
                     continue
                 z = (series.iloc[anchor] - mu) / sigma
-                diff_z = abs(z - TARGET_Z)
+                diff_z = abs(z - p["target_z"])
 
-                # Persistence: check +-5 bars around anchor
                 hits = 0
                 for offset in range(-5, 6):
                     idx = anchor + offset
                     if idx >= zp and idx < len(series):
-                        w = series.iloc[idx - zp + 1 : idx + 1]
+                        w = series.iloc[idx - zp + 1: idx + 1]
                         mu_o, sigma_o = w.mean(), w.std()
                         if sigma_o > 1e-10:
                             z_o = (series.iloc[idx] - mu_o) / sigma_o
-                            if abs(z_o - TARGET_Z) < 0.10:
+                            if abs(z_o - p["target_z"]) < 0.10:
                                 hits += 1
 
                 dur = zp * TF_MINUTES[tf_name]
                 results.append({
-                    "tf": tf_name,
-                    "model": model_name,
-                    "zp": zp,
-                    "z": z,
-                    "diff": diff_z,
-                    "hits": hits,
-                    "dur_min": dur,
+                    "tf": tf_name, "model": model_name, "zp": zp,
+                    "z": z, "diff": diff_z, "hits": hits, "dur_min": dur,
                 })
     return pd.DataFrame(results)
 
 
-def find_clusters(zps, hits_arr, z_arr, dur_arr, diff_arr):
-    clusters = []
-    cl_start = 0
-    for i in range(1, len(zps)):
-        if zps[i] - zps[i - 1] > 3:
-            clusters.append((cl_start, i - 1))
-            cl_start = i
-    clusters.append((cl_start, len(zps) - 1))
-    return clusters
-
-
-def print_clusters_by_model(df):
-    for model in ["Kalman", "OLS"]:
+def print_clusters_by_model(df, p):
+    model_names = ["ln(A/B)", "Kalman", "OLS"] if p["include_ln"] else ["Kalman", "OLS"]
+    for model in model_names:
         print(f"\n{'=' * 90}")
-        print(f"  {model} -- Clusters ancres sur screenshot (SI~88.4, HG~5.8)")
+        print(f"  {model} -- Clusters ancres sur screenshot ({p['pair']})")
         print(f"{'=' * 90}")
 
         sub = df[(df["model"] == model) & ((df["diff"] < 0.15) | (df["hits"] >= 3))]
@@ -139,16 +144,13 @@ def print_clusters_by_model(df):
             dur_arr = tf_data["dur_min"].values
             diff_arr = tf_data["diff"].values
 
-            clusters = find_clusters(zps, hits_arr, z_arr, dur_arr, diff_arr)
+            clusters = _find_clusters(zps)
 
             print(f"\n  {tf}:")
             for start, end in clusters:
                 sl = slice(start, end + 1)
-                cl_zps = zps[sl]
-                cl_h = hits_arr[sl]
-                cl_z = z_arr[sl]
-                cl_d = dur_arr[sl]
-                cl_diff = diff_arr[sl]
+                cl_zps, cl_h = zps[sl], hits_arr[sl]
+                cl_z, cl_d, cl_diff = z_arr[sl], dur_arr[sl], diff_arr[sl]
                 max_h = max(cl_h)
                 best_i = np.argmin(cl_diff)
                 avg_dur = np.mean(cl_d)
@@ -160,7 +162,7 @@ def print_clusters_by_model(df):
                 )
 
 
-def print_cross_tf_synthesis(df):
+def print_cross_tf_synthesis(df, p):
     print(f"\n{'=' * 90}")
     print("  SYNTHESE CROSS-TF normalisee en duree")
     print(f"{'=' * 90}")
@@ -168,10 +170,11 @@ def print_cross_tf_synthesis(df):
     bins = [0, 15, 45, 90, 180, 360, 720, 1500, 3000]
     labels = ["<15min", "15-45min", "45-90min", "1.5-3h", "3-6h", "6-12h", "12-25h", "25h+"]
 
-    for model in ["Kalman", "OLS"]:
+    model_names = ["ln(A/B)", "Kalman", "OLS"] if p["include_ln"] else ["Kalman", "OLS"]
+    for model in model_names:
         sub = df[(df["model"] == model) & (df["diff"] < 0.12)].copy()
         if sub.empty:
-            print(f"\n  {model}: aucun match fort")
+            print(f"\n  {model}: aucun match fort (diff < 0.12)")
             continue
 
         sub["dur_bucket"] = pd.cut(sub["dur_min"], bins=bins, labels=labels)
@@ -190,37 +193,56 @@ def print_cross_tf_synthesis(df):
             )
 
 
-def print_final_table(df):
+def print_final_table(df, p):
     print(f"\n{'=' * 90}")
-    print("  TABLE FINALE -- Meilleur ZP par TF (diff minimum au z=1.71)")
+    tz = p["target_z"]
+    print(f"  TABLE FINALE -- Meilleur ZP par TF (diff min au z={tz})")
     print(f"{'=' * 90}")
-    print(f"  {'TF':<6} | {'--- Kalman ---':^30} | {'--- OLS ---':^30}")
-    h = f"  {'':>6} | {'ZP':>5} {'Duree':>8} {'z':>7} {'pers':>5} | "
-    h += f"{'ZP':>5} {'Duree':>8} {'z':>7} {'pers':>5}"
-    print(h)
-    print(f"  {'-' * 70}")
+
+    model_names = ["ln(A/B)", "Kalman", "OLS"] if p["include_ln"] else ["Kalman", "OLS"]
+    header = f"  {'TF':<6} |"
+    for m in model_names:
+        header += f" {'--- ' + m + ' ---':^24} |"
+    print(header)
+    sub_h = f"  {'':>6} |"
+    for _ in model_names:
+        sub_h += f" {'ZP':>4} {'dur':>7} {'z':>6} {'p':>3} |"
+    print(sub_h)
+    print(f"  {'-' * (24 + 3) * len(model_names)}")
 
     for tf in TIMEFRAMES:
         row = f"  {tf:<6} |"
-        for model in ["Kalman", "OLS"]:
+        for model in model_names:
             sub = df[(df["model"] == model) & (df["tf"] == tf) & (df["diff"] < 0.5)]
             if sub.empty:
-                row += f" {'--':>5} {'':>8} {'':>7} {'':>5} |"
+                row += f" {'--':>4} {'':>7} {'':>6} {'':>3} |"
             else:
                 best = sub.loc[sub["diff"].idxmin()]
                 dur = best["dur_min"]
-                dur_s = f"{dur:.0f}min" if dur < 60 else f"{dur / 60:.1f}h"
+                dur_s = f"{dur:.0f}m" if dur < 60 else f"{dur / 60:.1f}h"
                 row += (
-                    f" {int(best['zp']):>5} {dur_s:>8} "
-                    f"{best['z']:>7.3f} {int(best['hits']):>5} |"
+                    f" {int(best['zp']):>4} {dur_s:>7}"
+                    f" {best['z']:>6.2f} {int(best['hits']):>3} |"
                 )
         print(row)
 
 
+def _find_clusters(zps):
+    clusters = []
+    cl_start = 0
+    for i in range(1, len(zps)):
+        if zps[i] - zps[i - 1] > 3:
+            clusters.append((cl_start, i - 1))
+            cl_start = i
+    clusters.append((cl_start, len(zps) - 1))
+    return clusters
+
+
 if __name__ == "__main__":
-    all_data = fetch_data()
-    anchors = find_anchors(all_data)
-    df = grid_search(all_data, anchors)
-    print_clusters_by_model(df)
-    print_cross_tf_synthesis(df)
-    print_final_table(df)
+    p = PARAMS
+    all_data = fetch_data(p["ticker_a"], p["ticker_b"])
+    anchors = find_anchors(all_data, p)
+    df = grid_search(all_data, anchors, p)
+    print_clusters_by_model(df, p)
+    print_cross_tf_synthesis(df, p)
+    print_final_table(df, p)
